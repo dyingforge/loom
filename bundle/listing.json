@@ -1,0 +1,15 @@
+{
+  "name": "Loom 项目经理日历",
+  "subtitle": "可执行的项目排程与重排 Agent",
+  "publisher": {
+    "name": "Loom Agent",
+    "privacy_policy_url": "https://loom.example.com/privacy"
+  },
+  "category": "productivity",
+  "platforms": ["macos"],
+  "age_rating": "all",
+  "description": "Loom 是 OctoSense 上的项目排程 Agent。用户输入目标、任务依赖与剩余工时；Loom 依据硬约束给出排程方案；批准后保存并核验。客户端 Splash 实现，Python + MiniMax 服务端独立部署，不在应用包内。",
+  "icon": "assets/icon.svg",
+  "screenshots": ["screenshots/01-main.png"],
+  "keywords": ["project", "calendar", "scheduling", "agent"]
+}

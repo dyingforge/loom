@@ -41,6 +41,34 @@ QUERY_FREE_SLOTS_SCHEMA: dict[str, Any] = {
     },
 }
 
+PROPOSE_TASKS_SCHEMA: dict[str, Any] = {
+    "name": "propose_tasks",
+    "description": "从 goal/deadline 出发，提出任务清单（标题、剩余工时、依赖、优先级）。"
+                "返回 [{id,title,priority,remainingHours,dependsOn}]。",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "tasks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "priority": {"type": "integer"},
+                        "remainingHours": {"type": "number"},
+                        "dependsOn": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["id", "title", "remainingHours"],
+                },
+            },
+        },
+        "required": ["tasks"],
+        "additionalProperties": False,
+    },
+}
+
+
 VALIDATE_SCHEDULE_SCHEMA: dict[str, Any] = {
     "name": "validate_schedule",
     "description": "校验候选排程是否违反 C1–C7；返回 [{code, blockId, detail}]，"
@@ -72,6 +100,7 @@ SCHEMAS: list[dict[str, Any]] = [
     ANALYZE_SCHEMA,
     QUERY_FREE_SLOTS_SCHEMA,
     VALIDATE_SCHEDULE_SCHEMA,
+    PROPOSE_TASKS_SCHEMA,
 ]
 
 
@@ -107,6 +136,35 @@ DISPATCH: dict[str, Any] = {
     "query_free_slots": query_free_slots_tool,
     "validate_schedule": validate_schedule_tool,
 }
+
+
+def propose_tasks_tool(project: Project, args: dict) -> dict:
+    if not isinstance(args, dict) or "tasks" not in args:
+        raise ValueError("propose_tasks 需要 tasks 数组")
+    proposed = args["tasks"]
+    if not isinstance(proposed, list):
+        raise ValueError("propose_tasks.tasks 必须是数组")
+    # 基本健全性：检查 ID 唯一、依赖引用存在
+    seen: set[str] = set()
+    for t in proposed:
+        if not isinstance(t, dict):
+            raise ValueError("propose_tasks.tasks 项必须是对象")
+        tid = t.get("id")
+        if not isinstance(tid, str) or not tid:
+            raise ValueError("任务 id 必填且为字符串")
+        if tid in seen:
+            raise ValueError(f"重复任务 id: {tid}")
+        seen.add(tid)
+    for t in proposed:
+        for dep in t.get("dependsOn") or []:
+            if dep not in seen:
+                raise ValueError(f"任务 {t['id']} 依赖 {dep} 不存在")
+        if t.get("remainingHours", 0) <= 0:
+            raise ValueError(f"任务 {t['id']} 剩余工时必须为正")
+    return {"proposed": proposed}
+
+
+DISPATCH["propose_tasks"] = propose_tasks_tool
 
 
 def dispatch(project: Project, name: str, args: dict) -> dict:

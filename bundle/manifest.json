@@ -1,0 +1,18 @@
+{
+  "id": "loom.pm-calendar",
+  "version": "0.1.0",
+  "name": "Loom 项目经理日历",
+  "entry": "main.splash",
+  "description": "理解目标、参考任务依赖和实际进度安排日历，在延误后提出或执行重排，并核验结果。",
+  "capabilities": ["storage", "net"],
+  "network": {
+    "hosts": ["loom.example.com"]
+  },
+  "storage": {
+    "max_bytes": 4194304
+  },
+  "integrity": {
+    "bundle_blake3": ""
+  },
+  "agent": null
+}
