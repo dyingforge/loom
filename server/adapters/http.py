@@ -1,4 +1,4 @@
-"""HTTP 适配层：FastAPI 暴露两个路由 + 限流/额度中间件（同文件）。
+"""HTTP 适配层：FastAPI 暴露路由 + 限流/额度中间件（同文件）。
 
 约束：
 - 不依赖 server.domain.models 之外的具体类型；
@@ -15,10 +15,11 @@ from collections import defaultdict, deque
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from server.agent.loop import State, run
-from server.domain.models import AgentRequest
+from server.domain.models import AgentRequest, Project
+from server.runtime.reconcile import verify
 from server.tests.stubs import ScriptedLLM  # 仅在未配置真实模型时使用
 
 
@@ -117,6 +118,24 @@ async def advance(request: AgentRequest) -> dict:
         "trace": state.trace,
         "state": state.to_dict(),
     }
+
+
+class VerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    plan: dict
+    versionBefore: int
+    versionAfter: int
+    readbackSnapshot: dict
+
+
+@app.post("/v1/agent/verify")
+async def verify_route(request: VerifyRequest) -> dict:
+    project = Project.model_validate(request.readbackSnapshot)
+    receipt = verify(
+        request.plan, request.versionBefore,
+        request.versionAfter, project,
+    )
+    return receipt.model_dump(mode="json")
 
 
 def _make_llm() -> Any:
