@@ -1,0 +1,195 @@
+{
+  "positive": [
+    {
+      "name": "被移动任务已标记 adjustable",
+      "plan_changes": [
+        {
+          "blockId": "t1:b1",
+          "before": {
+            "id": "b1",
+            "taskId": "t1",
+            "start": "2026-10-02T09:00",
+            "end": "2026-10-02T11:00",
+            "done": false
+          },
+          "after": {
+            "id": "b1",
+            "taskId": "t1",
+            "start": "2026-10-02T13:00",
+            "end": "2026-10-02T15:00",
+            "done": false
+          }
+        }
+      ],
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          }
+        ]
+      }
+    }
+  ],
+  "negative": [
+    {
+      "name": "被移动任务未标记 adjustable",
+      "plan_changes": [
+        {
+          "blockId": "t1:b1",
+          "before": {
+            "id": "b1",
+            "taskId": "t1",
+            "start": "2026-10-02T09:00",
+            "end": "2026-10-02T11:00",
+            "done": false
+          },
+          "after": {
+            "id": "b1",
+            "taskId": "t1",
+            "start": "2026-10-02T13:00",
+            "end": "2026-10-02T15:00",
+            "done": false
+          }
+        }
+      ],
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": []
+          }
+        ]
+      },
+      "expected_codes": [
+        "C7"
+      ]
+    },
+    {
+      "name": "多个被移动任务中之一未授权",
+      "plan_changes": [
+        {
+          "blockId": "t1:b1",
+          "before": {
+            "id": "b1",
+            "taskId": "t1",
+            "start": "2026-10-02T09:00",
+            "end": "2026-10-02T11:00",
+            "done": false
+          },
+          "after": {
+            "id": "b1",
+            "taskId": "t1",
+            "start": "2026-10-02T13:00",
+            "end": "2026-10-02T15:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "t2:b2",
+          "before": {
+            "id": "b2",
+            "taskId": "t2",
+            "start": "2026-10-05T09:00",
+            "end": "2026-10-05T11:00",
+            "done": false
+          },
+          "after": {
+            "id": "b2",
+            "taskId": "t2",
+            "start": "2026-10-05T13:00",
+            "end": "2026-10-05T15:00",
+            "done": false
+          }
+        }
+      ],
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          },
+          {
+            "id": "t2",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": []
+          }
+        ]
+      },
+      "expected_codes": [
+        "C7"
+      ]
+    }
+  ]
+}

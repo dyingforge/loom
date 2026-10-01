@@ -1,0 +1,165 @@
+{
+  "positive": [
+    {
+      "name": "不对已完成任务排程",
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "已完成",
+            "priority": 1,
+            "remainingHours": 0,
+            "done": true,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": [
+              {
+                "id": "b1",
+                "taskId": "t1",
+                "start": "2026-10-02T10:00",
+                "end": "2026-10-02T12:00",
+                "done": true
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "title": "未开始",
+            "priority": 1,
+            "remainingHours": 4,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          }
+        ]
+      },
+      "candidate": {
+        "blocks": [
+          {
+            "taskId": "t2",
+            "start": "2026-10-02T09:00",
+            "end": "2026-10-02T13:00"
+          }
+        ]
+      }
+    }
+  ],
+  "negative": [
+    {
+      "name": "对已完成任务再排",
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "已完成",
+            "priority": 1,
+            "remainingHours": 0,
+            "done": true,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          }
+        ]
+      },
+      "candidate": {
+        "blocks": [
+          {
+            "taskId": "t1",
+            "start": "2026-10-02T10:00",
+            "end": "2026-10-02T11:00"
+          }
+        ]
+      },
+      "expected_codes": [
+        "C1"
+      ]
+    },
+    {
+      "name": "移动已存在的已完成块",
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "进行中",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": [
+              {
+                "id": "b1",
+                "taskId": "t1",
+                "start": "2026-10-02T10:00",
+                "end": "2026-10-02T12:00",
+                "done": true
+              }
+            ]
+          }
+        ]
+      },
+      "candidate": {
+        "blocks": [
+          {
+            "id": "b1",
+            "taskId": "t1",
+            "start": "2026-10-02T11:00",
+            "end": "2026-10-02T13:00"
+          }
+        ]
+      },
+      "expected_codes": [
+        "C1"
+      ]
+    }
+  ]
+}

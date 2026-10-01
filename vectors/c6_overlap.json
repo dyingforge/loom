@@ -1,0 +1,183 @@
+{
+  "positive": [
+    {
+      "name": "两块不重叠（首尾相邻）",
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          },
+          {
+            "id": "t2",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          }
+        ]
+      },
+      "candidate": {
+        "blocks": [
+          {
+            "taskId": "t1",
+            "start": "2026-10-02T09:00",
+            "end": "2026-10-02T11:00"
+          },
+          {
+            "taskId": "t2",
+            "start": "2026-10-02T11:00",
+            "end": "2026-10-02T13:00"
+          }
+        ]
+      }
+    }
+  ],
+  "negative": [
+    {
+      "name": "两块部分重叠",
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          },
+          {
+            "id": "t2",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          }
+        ]
+      },
+      "candidate": {
+        "blocks": [
+          {
+            "taskId": "t1",
+            "start": "2026-10-02T09:00",
+            "end": "2026-10-02T11:00"
+          },
+          {
+            "taskId": "t2",
+            "start": "2026-10-02T10:00",
+            "end": "2026-10-02T12:00"
+          }
+        ]
+      },
+      "expected_codes": [
+        "C6"
+      ]
+    },
+    {
+      "name": "一块完全包含另一块",
+      "project": {
+        "id": "p",
+        "version": 1,
+        "goal": "g",
+        "deadline": null,
+        "milestones": [],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": true,
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          },
+          {
+            "id": "t2",
+            "title": "t",
+            "priority": 1,
+            "remainingHours": 2,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": true,
+            "blocks": []
+          }
+        ]
+      },
+      "candidate": {
+        "blocks": [
+          {
+            "taskId": "t1",
+            "start": "2026-10-02T09:00",
+            "end": "2026-10-02T14:00"
+          },
+          {
+            "taskId": "t2",
+            "start": "2026-10-02T10:00",
+            "end": "2026-10-02T12:00"
+          }
+        ]
+      },
+      "expected_codes": [
+        "C6"
+      ]
+    }
+  ]
+}
