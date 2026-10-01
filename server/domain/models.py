@@ -1,14 +1,9 @@
-"""领域模型（Pydantic）。
-
-类型是 server 端的唯一来源。客户端按 `docs/PROTOCOL.md` 中的 JSON Schema
-独立解析。IO、模型适配器、Web 框架均不依赖本模块。
-"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ----- 时间与基础 -----
@@ -16,6 +11,12 @@ class WorkHours(BaseModel):
     model_config = ConfigDict(extra="forbid")
     start: str = Field(pattern=r"^\d{2}:\d{2}$", description="HH:MM 工作日起始")
     end: str = Field(pattern=r"^\d{2}:\d{2}$", description="HH:MM 工作日结束")
+
+    @model_validator(mode="after")
+    def valid_interval(self):
+        if time.fromisoformat(self.end) <= time.fromisoformat(self.start):
+            raise ValueError("工作结束时间必须晚于开始时间")
+        return self
 
 
 # ----- 时间块 -----
@@ -26,6 +27,13 @@ class Block(BaseModel):
     start: datetime
     end: datetime
     done: bool = False
+
+    @field_validator("start", "end")
+    @classmethod
+    def _local_time(cls, value):
+        if value.tzinfo is not None:
+            raise ValueError("时间必须使用项目所在地的无偏移日历时间")
+        return value
 
     @field_validator("end")
     @classmethod
@@ -39,10 +47,10 @@ class Block(BaseModel):
 # ----- 任务 -----
 class Task(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    id: str
-    title: str
+    id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=200)
     priority: int = Field(ge=1, le=5)
-    remainingHours: float = Field(ge=0)
+    remainingHours: float = Field(ge=0, le=720, allow_inf_nan=False)
     done: bool = False
     dependsOn: list[str] = Field(default_factory=list)
     adjustable: bool = False
@@ -57,6 +65,14 @@ class FixedEvent(BaseModel):
     start: datetime
     end: datetime
 
+    @model_validator(mode="after")
+    def valid_interval(self):
+        if self.start.tzinfo is not None or self.end.tzinfo is not None:
+            raise ValueError("时间必须使用项目所在地的无偏移日历时间")
+        if self.end <= self.start:
+            raise ValueError("固定日程结束必须晚于开始")
+        return self
+
 
 # ----- 里程碑 -----
 class Milestone(BaseModel):
@@ -64,6 +80,14 @@ class Milestone(BaseModel):
     id: str
     title: str
     due: datetime
+    taskIds: list[str] = Field(default_factory=list)
+
+    @field_validator("due")
+    @classmethod
+    def local_due(cls, value):
+        if value.tzinfo is not None:
+            raise ValueError("里程碑必须使用项目所在地的无偏移日历时间")
+        return value
 
 
 # ----- 计划 -----
@@ -92,6 +116,15 @@ class CandidateBlock(BaseModel):
     start: datetime
     end: datetime
     id: Optional[str] = None
+    done: bool = False
+
+    @model_validator(mode="after")
+    def valid_interval(self):
+        if self.start.tzinfo is not None or self.end.tzinfo is not None:
+            raise ValueError("时间必须使用项目所在地的无偏移日历时间")
+        if self.end <= self.start:
+            raise ValueError("结束时间必须晚于开始时间")
+        return self
 
 
 class Candidate(BaseModel):
@@ -111,11 +144,18 @@ class Project(BaseModel):
     fixedEvents: list[FixedEvent] = Field(default_factory=list)
     workHours: WorkHours
     restDays: list[int] = Field(
-        default_factory=lambda: [0, 6],
+        default_factory=lambda: [5, 6],
         description="Python weekday(): 0=周一, 6=周日",
     )
     preferences: str = ""
-    autoAdjust: bool = True
+    autoAdjust: bool = False
+
+    @field_validator("deadline")
+    @classmethod
+    def _local_deadline(cls, value):
+        if value is not None and value.tzinfo is not None:
+            raise ValueError("截止时间必须使用项目所在地的无偏移日历时间")
+        return value
 
     @field_validator("restDays")
     @classmethod
@@ -144,6 +184,14 @@ class AgentRequest(BaseModel):
     trigger: Literal["delay", "progress", "new", "resume", "propose"]
     clarificationAnswer: Optional[str] = None
     state: Optional[dict] = None  # 暂停恢复用
+    now: datetime
+
+    @field_validator("now")
+    @classmethod
+    def local_now(cls, value):
+        if value.tzinfo is not None:
+            raise ValueError("now 必须使用项目所在地的无偏移日历时间")
+        return value
 
 
 class Violation(BaseModel):

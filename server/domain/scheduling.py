@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 from .models import Block, Candidate, CandidateBlock, Plan, Project
 
@@ -23,7 +24,7 @@ def _workdays(start: datetime, end: datetime, rest_days: set[int]) -> list[tuple
 
 
 def free_slots(project: Project, range_start: datetime,
-               range_end: datetime) -> list[tuple[datetime, datetime]]:
+               range_end: datetime, now: datetime | None = None) -> list[tuple[datetime, datetime]]:
     """返回范围内扣除固定日程、已完成块、休息日后的空闲时段。
 
     实现说明：先按工作时段切分每天为 [work.start, work.end] 的区间，然后
@@ -56,7 +57,7 @@ def free_slots(project: Project, range_start: datetime,
         locked.append((fe.start, fe.end))
     for t in project.tasks:
         for b in t.blocks:
-            if b.done:
+            if b.done or (now is not None and b.start < now):
                 locked.append((b.start, b.end))
 
     # 3. 逐天求差集（线性扫描，量级小）
@@ -90,10 +91,12 @@ def diff(project: Project, candidate: Candidate) -> Plan:
 
     candidate_blocks: dict[str, Block] = {}
     for i, cb in enumerate(candidate.blocks):
-        bid = cb.id or f"{cb.taskId}-{i}"
+        bid = cb.id or f"block-{uuid4().hex}"
+        if bid in candidate_blocks:
+            raise ValueError("时间块编号重复")
         candidate_blocks[bid] = Block(
             id=bid, taskId=cb.taskId,
-            start=cb.start, end=cb.end, done=False,
+            start=cb.start, end=cb.end, done=cb.done,
         )
 
     changes = []
@@ -107,11 +110,11 @@ def diff(project: Project, candidate: Candidate) -> Plan:
             changes.append({"blockId": bid, "before": None, "after": nb})
         else:
             ob = existing[bid]
-            if ob.start != nb.start or ob.end != nb.end:
+            if ob != nb:
                 changes.append({"blockId": bid, "before": ob, "after": nb})
 
     return Plan(
-        planId=f"plan-{project.version + 1}",
+        planId=f"plan-{uuid4().hex}",
         baseVersion=project.version,
         changes=changes,  # type: ignore[arg-type]
         risks=[],

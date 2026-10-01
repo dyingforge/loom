@@ -56,6 +56,6 @@ def test_propose_rejects_nonpositive_hours(empty_project: Project) -> None:
 
 def test_propose_via_dispatch(empty_project: Project) -> None:
     out = dispatch(empty_project, "propose_tasks", {"tasks": [
-        {"id": "t1", "title": "t", "remainingHours": 4},
+        {"id": "t1", "title": "t", "remainingHours": 4, "priority": 2, "dependsOn": []},
     ]})
     assert "proposed" in out

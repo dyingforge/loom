@@ -1,26 +1,29 @@
-"""HTTP 适配层：FastAPI 暴露路由 + 限流/额度中间件。
-
-约束：
-- 不依赖 server.domain.models 之外的具体类型；
-- agent.loop 不出现在这里；
-- minimax 适配器不 import Web 框架；
-- 默认无 LLM：必须在启动时通过环境变量选择真实模型；缺凭据时启动失败。
-"""
 from __future__ import annotations
 
 import logging
+import asyncio
+import json
 import os
+import secrets
 import time
-import uuid
-from collections import defaultdict, deque
-from typing import Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+from threading import Lock
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
+import httpx
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict
 
 from server.agent.loop import State, run
 from server.domain.models import AgentRequest, Project
+from server.domain.capacity import capacity
 from server.runtime.reconcile import verify
+from server.adapters.minimax import MiniMaxLLM
+from server.adapters.usage import MeteredLLM, UsageLedger
 
 
 # ---------- 日志 ----------
@@ -29,107 +32,42 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(message)s")
 
 
-# ---------- 配置 ----------
-class HttpConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    rate_limit_per_minute: int = 60
-    daily_cost_limit_cents: int = 1000
-    reviewer_token: Optional[str] = None
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.llm = MiniMaxLLM(api_key=os.environ.get("MINIMAX_API_KEY", ""),
+                             model=os.environ.get("MINIMAX_MODEL", "MiniMax-M2.7"),
+                             timeout=float(os.environ.get("LOOM_LLM_TIMEOUT", "60")))
+    app.state.ledger = UsageLedger(
+        Path(os.environ.get("LOOM_USAGE_DB", ".local-state/service.sqlite3")),
+        float(os.environ.get("LOOM_DAILY_COST_LIMIT_CENTS", "1000")),
+        float(os.environ.get("LOOM_REVIEWER_DAILY_COST_LIMIT_CENTS", "1000")),
+        float(os.environ.get("LOOM_INPUT_CENTS_PER_MILLION", "37.5")),
+        float(os.environ.get("LOOM_OUTPUT_CENTS_PER_MILLION", "120")),
+        int(os.environ.get("LOOM_RATE_LIMIT", "60")))
+    app.state.jobs = {}
+    app.state.jobs_lock = Lock()
+    app.state.pool = ThreadPoolExecutor(max_workers=4)
+    yield
+    app.state.pool.shutdown(wait=True)
 
 
-def _build_config() -> HttpConfig:
-    return HttpConfig(
-        rate_limit_per_minute=int(os.environ.get("LOOM_RATE_LIMIT", "60")),
-        daily_cost_limit_cents=int(
-            os.environ.get("LOOM_DAILY_COST_LIMIT_CENTS", "1000")),
-        reviewer_token=os.environ.get("LOOM_REVIEWER_TOKEN"),
-    )
+app = FastAPI(title="Loom Agent", version="0.1.0", lifespan=lifespan)
 
 
-CONFIG = _build_config()
+@app.exception_handler(httpx.TimeoutException)
+async def provider_timeout(request: Request, error):
+    return JSONResponse(status_code=504, content={"detail": "模型调用超时，本轮已停止，请重新发起"})
 
 
-# ---------- 状态 ----------
-class _Usage:
-    def __init__(self) -> None:
-        self.window: dict[str, deque] = defaultdict(deque)
-        self.day_cents: dict[str, float] = defaultdict(float)
-        self.request_ids: dict[str, str] = {}
-
-    def check(self, ip: str, is_reviewer: bool) -> None:
-        if is_reviewer:
-            return
-        now = time.time()
-        bucket = self.window[ip]
-        cutoff = now - 60
-        while bucket and bucket[0] < cutoff:
-            bucket.popleft()
-        if len(bucket) >= CONFIG.rate_limit_per_minute:
-            raise HTTPException(429, "rate limit exceeded")
-        bucket.append(now)
-        today = time.strftime("%Y-%m-%d")
-        if self.day_cents[today] >= CONFIG.daily_cost_limit_cents:
-            raise HTTPException(429, "daily cost limit reached")
-        self.day_cents[today] += 1.0
+@app.exception_handler(httpx.HTTPError)
+async def provider_http_error(request: Request, error):
+    LOG.error("提供方请求失败：%s", type(error).__name__)
+    return JSONResponse(status_code=502, content={"detail": "模型提供方拒绝请求或网络连接失败，本轮已停止"})
 
 
-USAGE = _Usage()
-
-
-app = FastAPI(title="Loom Agent", version="0.1.0")
-
-
-def _build_llm() -> Any:
-    """启动时构造真实 LLM；缺凭据立即失败。"""
-    api_key = os.environ.get("MINIMAX_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "MINIMAX_API_KEY missing；服务端不接受缺凭据启动（issue 08）。"
-        )
-    from server.adapters.minimax import MiniMaxLLM
-    return MiniMaxLLM(
-        api_key=api_key,
-        model=os.environ.get("MINIMAX_MODEL", "MiniMax-M2.7"),
-        timeout=float(os.environ.get("LOOM_LLM_TIMEOUT", "30")),
-    )
-
-
-LLM: Any = None  # 在每个路由懒构造，避免测试时启动即失败
-
-
-def _get_llm() -> Any:
-    global LLM
-    if LLM is None:
-        LLM = _build_llm()
-    return LLM
-
-
-@app.middleware("http")
-async def usage_middleware(request: Request, call_next):
-    rid = str(uuid.uuid4())
-    request.state.request_id = rid
-    if request.url.path == "/healthz":
-        return await call_next(request)
-    ip = request.client.host if request.client else "unknown"
-    token = request.headers.get("x-loom-reviewer-token")
-    is_reviewer = bool(CONFIG.reviewer_token and token == CONFIG.reviewer_token)
-    try:
-        USAGE.check(ip, is_reviewer)
-    except HTTPException as e:
-        LOG.warning("rid=%s ip=%s status=%s reason=%s",
-                    rid, ip, e.status_code, e.detail)
-        return Response(status_code=e.status_code, content=str(e.detail))
-    try:
-        t0 = time.time()
-        response = await call_next(request)
-    except Exception as e:
-        LOG.exception("rid=%s ip=%s error=%s", rid, ip, e)
-        return Response(status_code=500, content="internal error")
-    elapsed_ms = int((time.time() - t0) * 1000)
-    LOG.info("rid=%s ip=%s method=%s path=%s status=%s elapsed_ms=%s",
-             rid, ip, request.method, request.url.path,
-             response.status_code, elapsed_ms)
-    return response
+@app.exception_handler(ValueError)
+async def invalid_result(request: Request, error):
+    return JSONResponse(status_code=502, content={"detail": str(error)})
 
 
 @app.get("/healthz")
@@ -137,45 +75,129 @@ async def healthz() -> dict:
     return {"ok": True}
 
 
+@app.get("/privacy", response_class=PlainTextResponse)
+async def privacy() -> str:
+    return (Path(__file__).resolve().parents[2] / "docs/PRIVACY.md").read_text(encoding="utf-8")
+
+
+@app.post("/v1/agent/jobs", status_code=202)
+def start_job(request: AgentRequest, connection: Request) -> dict:
+    jobs = connection.app.state.jobs
+    with connection.app.state.jobs_lock:
+        expired = [key for key, value in jobs.items() if value[0] < time.time() - 3600 and value[1].done()]
+        for key in expired:
+            del jobs[key]
+        if sum(not value[1].done() for value in jobs.values()) >= 4:
+            raise HTTPException(429, "服务正在处理四项规划，请稍后重新发起")
+        identifier = uuid4().hex
+        jobs[identifier] = (time.time(), connection.app.state.pool.submit(advance, request, connection))
+    return {"jobId": identifier}
+
+
+@app.get("/v1/agent/jobs/{identifier}")
+async def job_result(identifier: str, connection: Request) -> dict:
+    job = connection.app.state.jobs.get(identifier)
+    if job is None:
+        raise HTTPException(410, "规划过程已过期或服务已经重启，请重新发起")
+    future = job[1]
+    until = time.monotonic() + 15
+    while not future.done() and time.monotonic() < until:
+        await asyncio.sleep(0.1)
+    if not future.done():
+        return {"status": "running"}
+    return {"status": "complete", "result": future.result()}
+
+
 @app.post("/v1/agent/advance")
-async def advance(request: AgentRequest) -> dict:
+def advance(request: AgentRequest, connection: Request) -> dict:
+    ledger = connection.app.state.ledger
+    ledger.check_rate(connection.client.host if connection.client else "unknown")
+    expected_token = os.environ.get("LOOM_REVIEWER_TOKEN", "")
+    token = connection.headers.get("x-loom-reviewer-token", "")
+    bucket = "reviewer" if expected_token and secrets.compare_digest(token, expected_token) else "public"
     if request.state is not None:
-        state = State.from_dict(request.state)
+        if not request.state.get("resumeToken"):
+            raise HTTPException(409, "暂停状态缺少恢复凭据，请重新发起规划")
+        if request.trigger != "resume" or not request.clarificationAnswer:
+            raise HTTPException(409, "恢复需要用户回答")
+        state = State.from_dict(ledger.resume(request.state["resumeToken"]))
+        if state.project.id != request.snapshot.id:
+            raise HTTPException(409, "恢复请求属于不同项目")
+        changed = state.project.model_dump() != request.snapshot.model_dump()
+        if changed:
+            state.trace.append({"type": "context_update", "fromVersion": state.project.version,
+                                "toVersion": request.snapshot.version})
+            state.messages.append({"role": "user", "content": "用户更新了项目，旧候选失效。完整当前项目：" +
+                                   request.snapshot.model_dump_json()})
+            state.plan = None
         state.project = request.snapshot
+        if state.status != "clarified" or request.trigger != "resume" or not request.clarificationAnswer:
+            raise HTTPException(409, "恢复需要有效暂停状态与用户回答")
+        state.status = "running"
+        state.now = request.now
+        state.messages.append({"role": "user", "content": json.dumps({
+            "answer": request.clarificationAnswer, "now": request.now.isoformat()}, ensure_ascii=False)})
     else:
-        state = State(project=request.snapshot)
-    state = run(state, _get_llm())
-    # 从 trace 中提取 propose_tasks 的 proposed 结果，供 issue 11 客户端使用
-    proposed_tasks = []
-    for msg in state.messages:
-        if msg.get("role") == "tool" and msg.get("name") == "propose_tasks":
-            res = msg.get("result") or {}
-            if isinstance(res, dict) and "proposed" in res:
-                proposed_tasks = res["proposed"]
-                break
+        if request.trigger == "resume":
+            raise HTTPException(409, "没有可恢复的暂停状态")
+        state = State(project=request.snapshot, now=request.now, trigger=request.trigger)
+    state = run(state, MeteredLLM(connection.app.state.llm, ledger, bucket))
+    response_state = state.to_dict()
+    if state.status == "clarified":
+        response_state["resumeToken"] = ledger.pause(response_state)
+    proposed_tasks = state.proposed_tasks
     if state.status == "submitted":
         return {
             "type": "plan",
             "payload": state.plan.model_dump(mode="json") if state.plan else {},
             "trace": state.trace,
             "proposed_tasks": proposed_tasks,
-            "state": state.to_dict(),
+            "state": response_state,
+            "calendar": calendar_metadata(state),
+            "capacity": capacity(state.project, state.now),
         }
+    if state.status == "proposed":
+        return {"type": "tasks", "payload": {"tasks": proposed_tasks},
+                "trace": state.trace, "state": response_state,
+                "capacity": capacity(state.project, state.now)}
     if state.status == "clarified":
         return {
             "type": "clarify",
             "payload": {"question": state.clarification or ""},
             "trace": state.trace,
             "proposed_tasks": proposed_tasks,
-            "state": state.to_dict(),
+            "state": response_state,
+            "capacity": capacity(state.project, state.now),
         }
     return {
         "type": "failed",
         "payload": {"reason": state.failure_reason or "unknown"},
         "trace": state.trace,
         "proposed_tasks": proposed_tasks,
-        "state": state.to_dict(),
+        "state": response_state,
+        "capacity": capacity(state.project, state.now),
     }
+
+
+def calendar_metadata(state: State) -> dict:
+    moments = {state.now.isoformat(): state.now}
+    if state.project.deadline:
+        moments[state.project.deadline.isoformat()] = state.project.deadline
+    for task in state.project.tasks:
+        for block in task.blocks:
+            moments[block.start.isoformat()] = block.start
+            moments[block.end.isoformat()] = block.end
+    for event in state.project.fixedEvents:
+        moments[event.start.isoformat()] = event.start
+        moments[event.end.isoformat()] = event.end
+    if state.plan:
+        for change in state.plan.changes:
+            for block in (change.before, change.after):
+                if block:
+                    moments[block.start.isoformat()] = block.start
+                    moments[block.end.isoformat()] = block.end
+    epoch = datetime(1970, 1, 1)
+    return {text: (moment - epoch).total_seconds() for text, moment in moments.items()}
 
 
 class VerifyRequest(BaseModel):
@@ -184,6 +206,7 @@ class VerifyRequest(BaseModel):
     versionBefore: int
     versionAfter: int
     readbackSnapshot: dict
+    beforeSnapshot: Project
 
 
 @app.post("/v1/agent/verify")
@@ -191,6 +214,6 @@ async def verify_route(request: VerifyRequest) -> dict:
     project = Project.model_validate(request.readbackSnapshot)
     receipt = verify(
         request.plan, request.versionBefore,
-        request.versionAfter, project,
+        request.versionAfter, project, request.beforeSnapshot,
     )
     return receipt.model_dump(mode="json")

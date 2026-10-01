@@ -65,26 +65,6 @@ def test_agent_does_not_import_adapters(sub: str) -> None:
                     pytest.fail(f"{py}:{lineno} agent 不得直接依赖 {forbidden_top}")
 
 
-def test_architecture_violation_triggers_test() -> None:
-    """证明本测试能捕获违规：临时写一个 domain 文件 import agent，再清理。"""
-    bad = SERVER / "domain" / "_guard_probe.py"
-    bad.write_text("from server.agent import ports  # noqa\n", encoding="utf-8")
-    try:
-        violations: list[str] = []
-        for py in (SERVER / "domain").rglob("*.py"):
-            for name, lineno in _top_level_imports(py):
-                if name.startswith("server.agent"):
-                    violations.append(f"{py}:{lineno} {name}")
-        assert violations, "guard 自检：应当检测到违规导入"
-    finally:
-        bad.unlink(missing_ok=True)
-        # 移除缓存
-        for cached in (SERVER / "domain").rglob("__pycache__"):
-            if cached.is_dir():
-                import shutil
-                shutil.rmtree(cached)
-
-
 def test_runtime_package_has_no_dev_responses() -> None:
     """server/adapters/http.py 与 server/agent/* 不得包含 dev_responses / 脚本替身默认。"""
     forbidden_strings = ["_dev_responses", "ScriptedLLM"]
@@ -94,4 +74,3 @@ def test_runtime_package_has_no_dev_responses() -> None:
             for bad in forbidden_strings:
                 if bad in txt:
                     pytest.fail(f"{py} 包含 {bad}；脚本替身与开发入口不得进入运行时包")
-

@@ -1,18 +1,22 @@
 {
+  "agent": null,
+  "capabilities": [
+    "storage",
+    "net"
+  ],
   "id": "loom.pm-calendar",
-  "version": "0.1.0",
-  "name": "Loom 项目经理日历",
-  "entry": "main.splash",
-  "description": "理解目标、参考任务依赖和实际进度安排日历，在延误后提出或执行重排，并核验结果。",
-  "capabilities": ["storage", "net"],
-  "network": {
-    "hosts": ["loom.example.com"]
+  "integrity": {
+    "bundle_blake3": "b624a7bd9833cfe5266521396439b1380646aff8a06521fa007ec12e3478264f"
   },
+  "name": "Loom 项目经理日历",
+  "network": {
+    "hosts": [
+      "invitation-newport-commands-collections.trycloudflare.com"
+    ]
+  },
+  "schema": 1,
   "storage": {
     "max_bytes": 4194304
   },
-  "integrity": {
-    "bundle_blake3": ""
-  },
-  "agent": null
+  "version": "0.1.0"
 }

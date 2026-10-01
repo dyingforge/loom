@@ -1,7 +1,3 @@
-"""模型可调用的 3 个工具。均为 domain 函数的薄包装。
-
-工具 schema 与函数并列，agent.loop 直接转发给 LLM。
-"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -10,7 +6,7 @@ from typing import Any
 from server.domain.scheduling import free_slots
 from server.domain.structure import analyze
 from server.domain.constraints import validate
-from server.domain.models import Candidate, Project
+from server.domain.models import Candidate, Project, Task
 
 
 # ---------- 参数 schema（JSON Schema 风格） ----------
@@ -50,16 +46,19 @@ PROPOSE_TASKS_SCHEMA: dict[str, Any] = {
         "properties": {
             "tasks": {
                 "type": "array",
+                "minItems": 1,
+                "maxItems": 12,
                 "items": {
                     "type": "object",
                     "properties": {
-                        "id": {"type": "string"},
-                        "title": {"type": "string"},
-                        "priority": {"type": "integer"},
-                        "remainingHours": {"type": "number"},
+                        "id": {"type": "string", "minLength": 1, "maxLength": 80},
+                        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+                        "priority": {"type": "integer", "minimum": 1, "maximum": 5},
+                        "remainingHours": {"type": "number", "exclusiveMinimum": 0, "maximum": 720},
                         "dependsOn": {"type": "array", "items": {"type": "string"}},
                     },
-                    "required": ["id", "title", "remainingHours"],
+                    "required": ["id", "title", "priority", "remainingHours", "dependsOn"],
+                    "additionalProperties": False,
                 },
             },
         },
@@ -71,28 +70,9 @@ PROPOSE_TASKS_SCHEMA: dict[str, Any] = {
 
 VALIDATE_SCHEDULE_SCHEMA: dict[str, Any] = {
     "name": "validate_schedule",
-    "description": "校验候选排程是否违反 C1–C7；返回 [{code, blockId, detail}]，"
+    "description": "校验完整候选排程是否违反 C1–C6；返回 [{code, blockId, detail}]，"
                 "空列表表示通过。只判断，不代排。",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "blocks": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "taskId": {"type": "string"},
-                        "start": {"type": "string"},
-                        "end": {"type": "string"},
-                        "id": {"type": "string"},
-                    },
-                    "required": ["taskId", "start", "end"],
-                },
-            },
-        },
-        "required": ["blocks"],
-        "additionalProperties": False,
-    },
+    "parameters": Candidate.model_json_schema(),
 }
 
 
@@ -145,7 +125,7 @@ def propose_tasks_tool(project: Project, args: dict) -> dict:
     if not isinstance(proposed, list):
         raise ValueError("propose_tasks.tasks 必须是数组")
     # 基本健全性：检查 ID 唯一、依赖引用存在
-    seen: set[str] = set()
+    seen: set[str] = {task.id for task in project.tasks}
     for t in proposed:
         if not isinstance(t, dict):
             raise ValueError("propose_tasks.tasks 项必须是对象")
@@ -161,7 +141,12 @@ def propose_tasks_tool(project: Project, args: dict) -> dict:
                 raise ValueError(f"任务 {t['id']} 依赖 {dep} 不存在")
         if t.get("remainingHours", 0) <= 0:
             raise ValueError(f"任务 {t['id']} 剩余工时必须为正")
-    return {"proposed": proposed}
+    tasks = [Task.model_validate(item) for item in proposed]
+    combined = project.model_copy(update={"tasks": project.tasks + tasks}, deep=True)
+    analysis = analyze(combined)
+    if analysis["cycles"] or analysis["missingRefs"]:
+        return {"error": "建议依赖形成循环或引用不存在：" + str(analysis)}
+    return {"proposed": [task.model_dump(mode="json") for task in tasks]}
 
 
 DISPATCH["propose_tasks"] = propose_tasks_tool

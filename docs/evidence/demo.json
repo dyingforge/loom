@@ -1,0 +1,617 @@
+[
+  {
+    "step": "确认真实模型的任务建议",
+    "sequence": 5,
+    "project": {
+      "id": "loom-current",
+      "version": 2,
+      "goal": "完成阅读记录应用的初赛演示准备，包括检查新增记录与列表、本地保存验证和讲解说明。",
+      "deadline": "2026-10-08T09:04:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "检查新增记录与列表功能（初赛准备）",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "T2",
+          "title": "本地保存验证",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [
+            "T1"
+          ],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "T3",
+          "title": "讲解说明准备",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "T1",
+            "T2"
+          ],
+          "adjustable": false,
+          "blocks": []
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "请提出上述三个准备事项的任务建议，每项估算0.5至1小时，按工作需要给出依赖。",
+      "autoAdjust": false
+    },
+    "receipt": null,
+    "modelCalls": 0,
+    "usage": null
+  },
+  {
+    "step": "批准排程并核验实际保存结果",
+    "sequence": 9,
+    "project": {
+      "id": "loom-current",
+      "version": 3,
+      "goal": "完成阅读记录应用的初赛演示准备，包括检查新增记录与列表、本地保存验证和讲解说明。",
+      "deadline": "2026-10-08T09:04:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "检查新增记录与列表功能（初赛准备）",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-615ea2725a0e4f0597e2ea6d811d6071",
+              "taskId": "T1",
+              "start": "2026-10-01T09:20:00",
+              "end": "2026-10-01T10:20:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "T2",
+          "title": "本地保存验证",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [
+            "T1"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-70cdca841a5c403b9a63e85f0d8b5eaa",
+              "taskId": "T2",
+              "start": "2026-10-01T10:20:00",
+              "end": "2026-10-01T10:50:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "T3",
+          "title": "讲解说明准备",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "T1",
+            "T2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-e35025f007c348e58f86f3f2f5786077",
+              "taskId": "T3",
+              "start": "2026-10-01T10:50:00",
+              "end": "2026-10-01T11:50:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "请提出上述三个准备事项的任务建议，每项估算0.5至1小时，按工作需要给出依赖。",
+      "autoAdjust": false
+    },
+    "receipt": {
+      "planId": "plan-8c892e3e80ac408d96f78c83aea015ab",
+      "versionBefore": 2,
+      "versionAfter": 3,
+      "readbackSnapshot": {
+        "id": "loom-current",
+        "version": 3,
+        "goal": "完成阅读记录应用的初赛演示准备，包括检查新增记录与列表、本地保存验证和讲解说明。",
+        "deadline": "2026-10-08T09:04:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "T1",
+            "title": "检查新增记录与列表功能（初赛准备）",
+            "priority": 2,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-615ea2725a0e4f0597e2ea6d811d6071",
+                "taskId": "T1",
+                "start": "2026-10-01T09:20:00",
+                "end": "2026-10-01T10:20:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "T2",
+            "title": "本地保存验证",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [
+              "T1"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-70cdca841a5c403b9a63e85f0d8b5eaa",
+                "taskId": "T2",
+                "start": "2026-10-01T10:20:00",
+                "end": "2026-10-01T10:50:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "T3",
+            "title": "讲解说明准备",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "T1",
+              "T2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-e35025f007c348e58f86f3f2f5786077",
+                "taskId": "T3",
+                "start": "2026-10-01T10:50:00",
+                "end": "2026-10-01T11:50:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "请提出上述三个准备事项的任务建议，每项估算0.5至1小时，按工作需要给出依赖。",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 6643,
+      "completion_tokens": 1072,
+      "total_tokens": 7715
+    }
+  },
+  {
+    "step": "更新剩余工时后重新规划并核验",
+    "sequence": 16,
+    "project": {
+      "id": "loom-current",
+      "version": 6,
+      "goal": "完成阅读记录应用的初赛演示准备，包括检查新增记录与列表、本地保存验证和讲解说明。",
+      "deadline": "2026-10-08T09:05:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "检查新增记录与列表功能（初赛准备）",
+          "priority": 2,
+          "remainingHours": 1.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-093430b7e8ef42bcaf616790f62e8807",
+              "taskId": "T1",
+              "start": "2026-10-01T09:20:00",
+              "end": "2026-10-01T10:20:00",
+              "done": false
+            },
+            {
+              "id": "block-70656df10c0043beb2a638aaaca9b0e5",
+              "taskId": "T1",
+              "start": "2026-10-01T11:50:00",
+              "end": "2026-10-01T12:20:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "T2",
+          "title": "本地保存验证",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [
+            "T1"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-0f225d351ece44ea8e02b5084467222e",
+              "taskId": "T2",
+              "start": "2026-10-01T12:20:00",
+              "end": "2026-10-01T12:50:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "T3",
+          "title": "讲解说明准备",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "T1",
+            "T2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-1d5c8788104848379e702b9da8c82cb1",
+              "taskId": "T3",
+              "start": "2026-10-01T12:50:00",
+              "end": "2026-10-01T13:50:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "任务已经确认，剩余工时由用户更新，以当前快照为准；遵守依赖并尽早完成。",
+      "autoAdjust": false
+    },
+    "receipt": {
+      "planId": "plan-b91bdbf3a23646c080ec4ff61d409b91",
+      "versionBefore": 5,
+      "versionAfter": 6,
+      "readbackSnapshot": {
+        "id": "loom-current",
+        "version": 6,
+        "goal": "完成阅读记录应用的初赛演示准备，包括检查新增记录与列表、本地保存验证和讲解说明。",
+        "deadline": "2026-10-08T09:05:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "T1",
+            "title": "检查新增记录与列表功能（初赛准备）",
+            "priority": 2,
+            "remainingHours": 1.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-093430b7e8ef42bcaf616790f62e8807",
+                "taskId": "T1",
+                "start": "2026-10-01T09:20:00",
+                "end": "2026-10-01T10:20:00",
+                "done": false
+              },
+              {
+                "id": "block-70656df10c0043beb2a638aaaca9b0e5",
+                "taskId": "T1",
+                "start": "2026-10-01T11:50:00",
+                "end": "2026-10-01T12:20:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "T2",
+            "title": "本地保存验证",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [
+              "T1"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-0f225d351ece44ea8e02b5084467222e",
+                "taskId": "T2",
+                "start": "2026-10-01T12:20:00",
+                "end": "2026-10-01T12:50:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "T3",
+            "title": "讲解说明准备",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "T1",
+              "T2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-1d5c8788104848379e702b9da8c82cb1",
+                "taskId": "T3",
+                "start": "2026-10-01T12:50:00",
+                "end": "2026-10-01T13:50:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "任务已经确认，剩余工时由用户更新，以当前快照为准；遵守依赖并尽早完成。",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 5,
+    "usage": {
+      "prompt_tokens": 16066,
+      "completion_tokens": 2410,
+      "total_tokens": 18476
+    }
+  },
+  {
+    "step": "重新启动后恢复相同项目与核验回执",
+    "sequence": 16,
+    "project": {
+      "id": "loom-current",
+      "version": 6,
+      "goal": "完成阅读记录应用的初赛演示准备，包括检查新增记录与列表、本地保存验证和讲解说明。",
+      "deadline": "2026-10-08T09:05:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "检查新增记录与列表功能（初赛准备）",
+          "priority": 2,
+          "remainingHours": 1.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-093430b7e8ef42bcaf616790f62e8807",
+              "taskId": "T1",
+              "start": "2026-10-01T09:20:00",
+              "end": "2026-10-01T10:20:00",
+              "done": false
+            },
+            {
+              "id": "block-70656df10c0043beb2a638aaaca9b0e5",
+              "taskId": "T1",
+              "start": "2026-10-01T11:50:00",
+              "end": "2026-10-01T12:20:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "T2",
+          "title": "本地保存验证",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [
+            "T1"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-0f225d351ece44ea8e02b5084467222e",
+              "taskId": "T2",
+              "start": "2026-10-01T12:20:00",
+              "end": "2026-10-01T12:50:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "T3",
+          "title": "讲解说明准备",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "T1",
+            "T2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-1d5c8788104848379e702b9da8c82cb1",
+              "taskId": "T3",
+              "start": "2026-10-01T12:50:00",
+              "end": "2026-10-01T13:50:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "任务已经确认，剩余工时由用户更新，以当前快照为准；遵守依赖并尽早完成。",
+      "autoAdjust": false
+    },
+    "receipt": {
+      "planId": "plan-b91bdbf3a23646c080ec4ff61d409b91",
+      "versionBefore": 5,
+      "versionAfter": 6,
+      "readbackSnapshot": {
+        "id": "loom-current",
+        "version": 6,
+        "goal": "完成阅读记录应用的初赛演示准备，包括检查新增记录与列表、本地保存验证和讲解说明。",
+        "deadline": "2026-10-08T09:05:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "T1",
+            "title": "检查新增记录与列表功能（初赛准备）",
+            "priority": 2,
+            "remainingHours": 1.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-093430b7e8ef42bcaf616790f62e8807",
+                "taskId": "T1",
+                "start": "2026-10-01T09:20:00",
+                "end": "2026-10-01T10:20:00",
+                "done": false
+              },
+              {
+                "id": "block-70656df10c0043beb2a638aaaca9b0e5",
+                "taskId": "T1",
+                "start": "2026-10-01T11:50:00",
+                "end": "2026-10-01T12:20:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "T2",
+            "title": "本地保存验证",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [
+              "T1"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-0f225d351ece44ea8e02b5084467222e",
+                "taskId": "T2",
+                "start": "2026-10-01T12:20:00",
+                "end": "2026-10-01T12:50:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "T3",
+            "title": "讲解说明准备",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "T1",
+              "T2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-1d5c8788104848379e702b9da8c82cb1",
+                "taskId": "T3",
+                "start": "2026-10-01T12:50:00",
+                "end": "2026-10-01T13:50:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "任务已经确认，剩余工时由用户更新，以当前快照为准；遵守依赖并尽早完成。",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 5,
+    "usage": {
+      "prompt_tokens": 16066,
+      "completion_tokens": 2410,
+      "total_tokens": 18476
+    }
+  }
+]

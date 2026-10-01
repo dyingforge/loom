@@ -1,56 +1,26 @@
-"""执行后核验：对比批准方案、版本与回读快照。
-
-服务端核验失败时返回 not_verified；客户端不显示「已核验」。
-"""
 from __future__ import annotations
 
-from server.domain.models import Project, Receipt
+from server.domain.models import Plan, Project, Receipt
+from server.runtime.plans import apply_plan
+
+
+def comparable(project: Project):
+    data = project.model_dump(mode="json")
+    for task in data["tasks"]:
+        task["blocks"] = sorted(task["blocks"], key=lambda block: block["id"])
+    return data
 
 
 def verify(plan: dict, version_before: int, version_after: int,
-           readback: Project) -> Receipt:
-    """对比：版本一致 + 方案变更块的 after 集合 ⊆ 回读 Project 现有块。"""
-    if plan.get("baseVersion") != version_before:
-        return Receipt(
-            planId=plan["planId"], versionBefore=version_before,
-            versionAfter=version_after, readbackSnapshot=readback,
-            status="not_verified",
-            reason="baseVersion 与 versionBefore 不一致",
-        )
-    expected: dict[str, dict] = {}
-    for ch in plan.get("changes") or []:
-        if ch.get("after"):
-            expected[ch["blockId"]] = {
-                "start": ch["after"]["start"],
-                "end": ch["after"]["end"],
-                "done": ch["after"].get("done", False),
-                "taskId": ch["after"]["taskId"],
-            }
-    actual: dict[str, dict] = {}
-    for t in readback.tasks:
-        for b in t.blocks:
-            actual[b.id] = {
-                "start": b.start.isoformat(),
-                "end": b.end.isoformat(),
-                "done": b.done,
-                "taskId": b.taskId,
-            }
-    missing = [bid for bid in expected if bid not in actual]
-    mismatched = [
-        bid for bid in expected if bid in actual and (
-            actual[bid]["start"] != expected[bid]["start"]
-            or actual[bid]["end"] != expected[bid]["end"]
-        )
-    ]
-    if missing or mismatched:
-        return Receipt(
-            planId=plan["planId"], versionBefore=version_before,
-            versionAfter=version_after, readbackSnapshot=readback,
-            status="not_verified",
-            reason=f"回读不一致: missing={missing}, mismatched={mismatched}",
-        )
-    return Receipt(
-        planId=plan["planId"], versionBefore=version_before,
-        versionAfter=version_after, readbackSnapshot=readback,
-        status="verified", reason="",
-    )
+           readback: Project, before: Project) -> Receipt:
+    approved = Plan.model_validate(plan)
+    reason = ""
+    if approved.baseVersion != version_before or before.version != version_before:
+        reason = "批准版本与执行前项目版本不一致"
+    elif version_after != version_before + 1 or readback.version != version_after:
+        reason = "保存后的版本必须增加一次且与回读版本一致"
+    elif comparable(apply_plan(before, approved)) != comparable(readback):
+        reason = "完整回读项目与批准方案不一致"
+    return Receipt(planId=approved.planId, versionBefore=version_before,
+                   versionAfter=version_after, readbackSnapshot=readback,
+                   status="not_verified" if reason else "verified", reason=reason)
