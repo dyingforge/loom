@@ -153,6 +153,16 @@ def step(state: State, llm: Any) -> State:
             if state.invalid_streak >= MAX_INVALID_PARAMS_STREAK:
                 return _stop(state, "非法候选连续出现，停止")
             return state
+        if len(cand.blocks) == 0:
+            state.invalid_streak += 1
+            state.messages.append({
+                "role": "user",
+                "content": "候选为空。请至少提交一个时间块。",
+            })
+            state.trace.append({"type": "empty_candidate"})
+            if state.invalid_streak >= MAX_INVALID_PARAMS_STREAK:
+                return _stop(state, "候选连续为空，停止")
+            return state
         violations = validate(state.project, cand)
         state.trace.append({"type": "validation", "attempt": attempts,
                             "violations": [v.model_dump() for v in violations]})
