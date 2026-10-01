@@ -83,3 +83,15 @@ def test_architecture_violation_triggers_test() -> None:
             if cached.is_dir():
                 import shutil
                 shutil.rmtree(cached)
+
+
+def test_runtime_package_has_no_dev_responses() -> None:
+    """server/adapters/http.py 与 server/agent/* 不得包含 dev_responses / 脚本替身默认。"""
+    forbidden_strings = ["_dev_responses", "ScriptedLLM"]
+    for sub in ("adapters", "agent", "runtime"):
+        for py in (SERVER / sub).rglob("*.py"):
+            txt = py.read_text(encoding="utf-8")
+            for bad in forbidden_strings:
+                if bad in txt:
+                    pytest.fail(f"{py} 包含 {bad}；脚本替身与开发入口不得进入运行时包")
+

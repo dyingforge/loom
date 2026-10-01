@@ -9,6 +9,17 @@ from fastapi.testclient import TestClient
 
 from server.adapters import http as http_mod
 from server.adapters.http import HttpConfig, app
+from server.tests.stubs import ScriptedLLM
+
+
+@pytest.fixture(autouse=True)
+def _stub_llm() -> None:
+    http_mod.LLM = ScriptedLLM([
+        {"type": "submit", "candidate": {"blocks": [
+            {"taskId": "t1", "start": "2026-10-02T09:00:00",
+             "end": "2026-10-02T11:00:00"},
+        ]}},
+    ])
 
 
 @pytest.fixture(autouse=True)

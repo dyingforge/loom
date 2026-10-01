@@ -4,7 +4,29 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from server.adapters import http as http_mod
 from server.adapters.http import app
+from server.tests.stubs import ScriptedLLM
+
+
+@pytest.fixture(autouse=True)
+def _stub_llm() -> None:
+    """所有 HTTP 测试用脚本替身；不发起真实网络请求。"""
+    http_mod.LLM = ScriptedLLM([
+        {"type": "tool", "name": "analyze", "arguments": {}},
+        {"type": "tool", "name": "query_free_slots", "arguments": {
+            "start": "2026-10-02T00:00:00",
+            "end": "2026-10-08T00:00:00",
+        }},
+        {"type": "submit", "candidate": {"blocks": [
+            {"taskId": "t1", "start": "2026-10-02T09:00:00",
+             "end": "2026-10-02T15:00:00"},
+            {"taskId": "t2", "start": "2026-10-06T09:00:00",
+             "end": "2026-10-06T15:00:00"},
+            {"taskId": "t3", "start": "2026-10-07T09:00:00",
+             "end": "2026-10-07T13:00:00"},
+        ]}},
+    ])
 
 
 @pytest.fixture
