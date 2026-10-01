@@ -1,0 +1,8 @@
+# AGENTS.md 第 4 条：本地中间结果目录不进仓库
+.scratch/
+.env
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+node_modules/
