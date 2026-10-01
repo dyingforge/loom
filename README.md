@@ -1,6 +1,6 @@
 # Loom
 
-Loom 是使用 OctoScript 客户端、Python 服务和 MiniMax 的个人项目经理日历。初赛演示包含目标录入、任务建议、修改确认、模型排程、批准保存、结果核验和进度更新后的重新规划。
+Loom 是使用 OctoScript 原生客户端、Python 服务和 MiniMax 的目标日历。填写目标和截止日期后，模型拆分任务并安排到真实月历。用户查看每日安排，通过文字建议修改计划，确认并完成保存核验。
 
 ## 启动服务
 
@@ -27,17 +27,18 @@ python3 scripts/run_client.py
 
 ## 演示与验证
 
-[演示说明](docs/DEMO.md) 记录具体操作、运行环境和使用限制。[演示验收记录](docs/evidence/demo.json) 来自真实控件操作、真实模型响应和本地文件回读。
+[演示说明](docs/DEMO.md) 记录具体操作、运行环境和使用限制。[日历验收记录](docs/evidence/calendar-demo.json) 来自真实控件操作、真实模型响应和本地文件回读。
 
 ```sh
 python3 -m pytest -q server/tests
 ```
 
-`scripts/check_demo.py` 可以驱动真实客户端重复验证主流程，需要启动一个空项目的客户端。`scripts/check_service.py` 检查真实服务的启动、超时、提供方错误和额度限制，需要模型凭据。
+`scripts/check_demo.py` 驱动真实客户端验证月历日期、目标生成、文字修改、确认核验及恢复，启动时使用空的数据目录。`scripts/check_service.py` 检查真实服务的启动、超时、提供方错误和额度限制，需要模型凭据。
 
 ## 代码与资料
 
-- `bundle/main.splash`：客户端入口，包含项目、任务、日历、方案和规划过程界面。
+- `bundle/main.splash`：目标入口、真实月历、当天完整安排和计划说明。
+- `bundle/assets/fonts/`：Figma 使用的 Noto Sans SC 与 Manrope 字体及授权文件。
 - `server/domain/`：项目模型、约束检查、容量计算和日历差异。
 - `server/agent/`：真实模型的工具调用与规划过程。
 - `server/adapters/`：HTTP 服务、MiniMax 连接、使用记录和额度限制。

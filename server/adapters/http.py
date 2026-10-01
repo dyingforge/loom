@@ -19,9 +19,9 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict
 
 from server.agent.loop import State, run
-from server.domain.models import AgentRequest, Project
+from server.domain.models import AgentRequest, Plan, Project
 from server.domain.capacity import capacity
-from server.runtime.reconcile import verify
+from server.runtime.reconcile import verify, verify_calendar
 from server.adapters.minimax import MiniMaxLLM
 from server.adapters.usage import MeteredLLM, UsageLedger
 
@@ -90,7 +90,8 @@ def start_job(request: AgentRequest, connection: Request) -> dict:
         if sum(not value[1].done() for value in jobs.values()) >= 4:
             raise HTTPException(429, "服务正在处理四项规划，请稍后重新发起")
         identifier = uuid4().hex
-        jobs[identifier] = (time.time(), connection.app.state.pool.submit(advance, request, connection))
+        progress = {"stage": "正在拆分目标" if request.trigger == "compose" else "正在根据建议规划"}
+        jobs[identifier] = (time.time(), connection.app.state.pool.submit(_advance, request, connection, progress), progress)
     return {"jobId": identifier}
 
 
@@ -104,12 +105,16 @@ async def job_result(identifier: str, connection: Request) -> dict:
     while not future.done() and time.monotonic() < until:
         await asyncio.sleep(0.1)
     if not future.done():
-        return {"status": "running"}
+        return {"status": "running", "stage": job[2]["stage"]}
     return {"status": "complete", "result": future.result()}
 
 
 @app.post("/v1/agent/advance")
 def advance(request: AgentRequest, connection: Request) -> dict:
+    return _advance(request, connection, None)
+
+
+def _advance(request: AgentRequest, connection: Request, progress: dict | None) -> dict:
     ledger = connection.app.state.ledger
     ledger.check_rate(connection.client.host if connection.client else "unknown")
     expected_token = os.environ.get("LOOM_REVIEWER_TOKEN", "")
@@ -140,8 +145,13 @@ def advance(request: AgentRequest, connection: Request) -> dict:
     else:
         if request.trigger == "resume":
             raise HTTPException(409, "没有可恢复的暂停状态")
-        state = State(project=request.snapshot, now=request.now, trigger=request.trigger)
-    state = run(state, MeteredLLM(connection.app.state.llm, ledger, bucket))
+        state = State(project=request.snapshot, now=request.now, trigger=request.trigger,
+                      instruction=request.instruction)
+    def update_stage(stage):
+        if progress is not None:
+            progress["stage"] = stage
+
+    state = run(state, MeteredLLM(connection.app.state.llm, ledger, bucket), progress=update_stage)
     response_state = state.to_dict()
     if state.status == "clarified":
         response_state["resumeToken"] = ledger.pause(response_state)
@@ -149,6 +159,7 @@ def advance(request: AgentRequest, connection: Request) -> dict:
     if state.status == "submitted":
         return {
             "type": "plan",
+            "draftProject": state.project.model_dump(mode="json"),
             "payload": state.plan.model_dump(mode="json") if state.plan else {},
             "trace": state.trace,
             "proposed_tasks": proposed_tasks,
@@ -163,6 +174,7 @@ def advance(request: AgentRequest, connection: Request) -> dict:
     if state.status == "clarified":
         return {
             "type": "clarify",
+            "draftProject": state.project.model_dump(mode="json"),
             "payload": {"question": state.clarification or ""},
             "trace": state.trace,
             "proposed_tasks": proposed_tasks,
@@ -217,3 +229,20 @@ async def verify_route(request: VerifyRequest) -> dict:
         request.versionAfter, project, request.beforeSnapshot,
     )
     return receipt.model_dump(mode="json")
+
+
+class CalendarVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    beforeSnapshot: Project
+    draftProject: Project
+    plan: Plan
+    readbackSnapshot: Project
+    now: datetime
+
+
+@app.post("/v1/calendar/verify")
+async def calendar_verify_route(request: CalendarVerifyRequest) -> dict:
+    if request.now.tzinfo is not None:
+        raise ValueError("核验时间必须使用设备当地时间")
+    return verify_calendar(request.beforeSnapshot, request.draftProject, request.plan,
+                           request.readbackSnapshot, request.now).model_dump(mode="json")

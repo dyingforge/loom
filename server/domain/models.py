@@ -181,10 +181,22 @@ class Receipt(BaseModel):
 class AgentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     snapshot: Project
-    trigger: Literal["delay", "progress", "new", "resume", "propose"]
+    trigger: Literal["delay", "progress", "new", "resume", "propose", "compose", "revise"]
+    instruction: str = Field(default="", max_length=4000)
     clarificationAnswer: Optional[str] = None
     state: Optional[dict] = None  # 暂停恢复用
     now: datetime
+
+    @model_validator(mode="after")
+    def calendar_request(self):
+        if self.trigger in ("compose", "revise"):
+            if not self.snapshot.goal.strip() or self.snapshot.deadline is None:
+                raise ValueError("请填写目标和截止日期")
+            if self.snapshot.deadline <= self.now:
+                raise ValueError("截止日期必须晚于当前时间")
+        if self.trigger == "revise" and not self.instruction.strip():
+            raise ValueError("请填写修改建议")
+        return self
 
     @field_validator("now")
     @classmethod

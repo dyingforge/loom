@@ -1,48 +1,47 @@
-# Loom 客户端与服务端协议
+# Loom 日历协议
 
 ## 时间与项目
 
-项目使用所在地的无偏移 ISO 日历时间，例如 `2026-10-01T09:00:00`。客户端以用户填写的 UTC 偏移计算当前时间，发送必填的 `now`。服务端直接检查日历时间。休息日编号为 `0=周一` 至 `6=周日`。
+项目使用设备所在地的无偏移 ISO 日历时间，例如 `2026-10-01T09:00:00`。启动器向客户端提供设备时区与当前 UTC 偏移。请求中的 `now` 必填，时间包含偏移时拒绝处理。休息日编号为 `0=周一` 至 `6=周日`。
 
-项目包含 `id`、非负 `version`、`goal`、可选 `deadline`、`milestones`、`tasks`、`fixedEvents`、`workHours`、`restDays`、`preferences` 和 `autoAdjust`。任务包含唯一 `id`、`title`、`priority`、`remainingHours`、`done`、`dependsOn`、`adjustable` 和 `blocks`。时间块包含 `id`、`taskId`、`start`、`end`、`done`。完整类型定义由 `server/domain/models.py` 提供。
+项目包含 `id`、非负 `version`、`goal`、`deadline`、`milestones`、`tasks`、`fixedEvents`、`workHours`、`restDays`、`preferences`、`autoAdjust`。任务包含 `id`、`title`、`priority`、`remainingHours`、`done`、`dependsOn`、`adjustable`、`blocks`。完整类型定义位于 `server/domain/models.py`。
 
-里程碑包含 `id`、`title`、`due` 和 `taskIds`；空 `taskIds` 表示全部任务。更新项目事实递增版本，并作废待批准方案。剩余工时填写零表示任务完成；标记时间块完成会保留完成事实。
+## 生成与修改
 
-## 发起规划
+客户端发送 `POST /v1/agent/jobs`，包含 `snapshot`、`now`、`trigger`、`instruction`。生成目标使用 `trigger=compose`；根据建议修改使用 `trigger=revise` 和非空 `instruction`。目标与有效的未来截止时间必须存在。
 
-客户端发送 `POST /v1/agent/jobs`，请求包含 `snapshot`、`now` 和 `trigger`。`trigger` 支持 `new`、`propose`、`progress`、`delay`、`resume`。服务立即返回 `202` 和 `jobId`。
+服务立即返回 `202` 和 `jobId`。客户端使用 `GET /v1/agent/jobs/{jobId}` 查询，每次最多等待十五秒。执行中返回 `status=running` 和实际工具执行阶段 `stage`；结束时返回 `status=complete` 和 `result`。服务重启或过程过期返回 `410`。服务最多同时执行四项规划。
 
-客户端使用 `GET /v1/agent/jobs/{jobId}` 查询真实执行结果，每次查询最多等待 15 秒。响应为 `status=running`，或者 `status=complete` 及 `result`。服务重启或过程过期返回 `410`。服务最多同时执行四项规划。
-
-`result` 包含以下字段：
-
-| 字段 | 含义 |
+| 结果字段 | 含义 |
 | --- | --- |
-| `type` | `tasks`、`plan`、`clarify`、`failed` |
-| `payload` | 任务建议、方案、问题或停止原因 |
-| `state` | 当前规划状态、对话、真实用量和累计计数 |
-| `trace` | 实际工具调用和约束检查结果 |
-| `capacity` | 剩余工时、期限内可用工时和缺口 |
-| `calendar` | 方案时间与日历秒数的对应数据，供客户端独立复核 |
+| `type` | `plan`、`clarify` 或 `failed` |
+| `draftProject` | 生成或修改后的完整候选任务清单 |
+| `payload` | 计划、问题或停止原因 |
+| `state` | 真实规划状态、对话、调用次数与提供方用量 |
+| `trace` | 实际工具调用及约束检查结果 |
+| `capacity` | 剩余工时、期限内可用工时与缺口 |
+| `calendar` | ISO 时间与日历秒数的对应数据 |
 
-方案包含 `planId`、`baseVersion`、`changes`、`rationale`、`risks`、`exceptions`。每项变更包含 `blockId`、`before` 和 `after`。服务只生成方案，客户端在用户批准后保存日历。
+`compose` 必须调用 `rebuild_tasks` 完成目标拆分。`revise` 根据建议调整任务内容、工时、依赖或时间。重构保留已经开始或完成的工作记录。模型查询真实空闲时段，提交完整排程，并接受工时、依赖、工作时间、固定日程和冲突核验。
 
-`POST /v1/agent/advance` 使用相同请求与结果结构，等待整轮结束，供直接接口调用使用。
+计划包含 `planId`、`baseVersion`、`changes`、`rationale`、`risks`、`exceptions`。每项变更包含 `blockId`、`before`、`after`。候选清单与候选日历分别通过 `draftProject` 和计划变更表示，正式项目在确认前保持保存状态。
 
-## 暂停与恢复
+## 确认与核验
 
-`type=clarify` 时，客户端显示 `payload.question` 并保存返回状态。恢复请求发送 `trigger=resume`、当前项目、当前时间、`clarificationAnswer` 和带有 `resumeToken` 的状态。
+客户端检查计划版本和原始时间块，根据 `draftProject` 应用变更，产生版本增加一次的完整目标日历。候选目标先写入 `pendingVerification`，同时保留正式项目。
 
-服务端使用 SQLite 中的真实暂停状态恢复规划。恢复凭据有效期 24 小时，使用一次后失效，调用与候选计数继续累计。每轮最多调用模型十次，同一候选最多提交检查四次。客户端提交的计数不能替换服务端记录。
+客户端实际回读保存文件，将 `beforeSnapshot`、`draftProject`、`plan`、`readbackSnapshot` 和当前 `now` 发送至 `POST /v1/calendar/verify`。服务比较完整预期数据与回读数据，复核日历约束以及已经开始或完成的记录。
 
-## 保存与核验
+服务返回 `verified` 或 `not_verified` 回执。核验通过后，客户端将目标日历保存为正式项目并再次回读比较；候选与待核验记录清空。失败时保留正式项目、候选与待核验目标，显示具体原因并提供重新确认入口。
 
-批准前，客户端要求 `project.version == plan.baseVersion`，检查变更中的原始时间块，生成完整日历并独立复核约束。保存后项目版本增加一次。
+## 保存与恢复
 
-客户端发送 `POST /v1/agent/verify`，包含 `plan`、`versionBefore`、`versionAfter`、`beforeSnapshot` 和实际文件回读的 `readbackSnapshot`。服务比较完整预期项目与回读项目，返回 `verified` 或 `not_verified` 回执。核验包括未修改的时间块、完成状态、任务信息和项目设置。
+客户端交替写入 `calendar-a.json` 和 `calendar-b.json`，格式版本为三。每份记录包含 `sequence`、`payload`、`mirror`，两份正文必须一致，读取序号较大的记录。保存后使用原生结构比较检查全部内容。损坏内容立即停止处理。
 
-## 本地保存
+记录包含正式项目、候选任务、计划、时间资料、输入建议、核验回执、待核验目标、显示月份和选中日期。候选与正式计划支持分别查看和重新启动恢复。执行中的 `jobId` 可以继续查询；服务连接失效后显示停止原因。
 
-客户端交替写入 `snap-a.json` 和 `snap-b.json`。每份记录包含 `sequence`、`payload` 与 `mirror`；两份内容一致时接受记录，选择序号较大的有效快照。保存后再次读取并比较完整内容。记录保留项目、待批准方案、暂停过程、核验回执和最近一次撤销资料。
+## 补充回答
 
-模型或网络错误停止当前请求并显示错误。已保存但尚未核验的日历保留待核验记录，可以重新核验。客户端通过清单中明确声明的 HTTPS 主机访问服务。
+`type=clarify` 时，客户端显示问题并保存模型返回的候选任务与暂停状态。恢复请求包含 `trigger=resume`、暂停项目、当前时间、`clarificationAnswer` 及带有 `resumeToken` 的状态。
+
+服务使用 SQLite 中的暂停状态继续规划。恢复凭据有效期二十四小时且只允许使用一次。每轮最多调用模型十次，同一候选最多提交核验四次，计数由服务保存。

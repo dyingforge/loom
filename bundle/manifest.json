@@ -6,12 +6,12 @@
   ],
   "id": "loom.pm-calendar",
   "integrity": {
-    "bundle_blake3": "b624a7bd9833cfe5266521396439b1380646aff8a06521fa007ec12e3478264f"
+    "bundle_blake3": "8ea841bf62283105b1b1b47af557820aa62ef3ddf3674eb3c056f2d9dbbbc307"
   },
-  "name": "Loom 项目经理日历",
+  "name": "Loom 目标日历",
   "network": {
     "hosts": [
-      "invitation-newport-commands-collections.trycloudflare.com"
+      "quotes-geographical-per-foreign.trycloudflare.com"
     ]
   },
   "schema": 1,

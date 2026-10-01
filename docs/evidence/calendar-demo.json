@@ -1,0 +1,2213 @@
+[
+  {
+    "step": "真实月历日期与七列布局",
+    "months": [
+      {
+        "year": 2026,
+        "month": 11,
+        "rows": 6,
+        "days": 42
+      },
+      {
+        "year": 2026,
+        "month": 12,
+        "rows": 5,
+        "days": 35
+      },
+      {
+        "year": 2027,
+        "month": 1,
+        "rows": 5,
+        "days": 35
+      },
+      {
+        "year": 2027,
+        "month": 2,
+        "rows": 4,
+        "days": 28
+      },
+      {
+        "year": 2028,
+        "month": 2,
+        "rows": 5,
+        "days": 35
+      }
+    ]
+  },
+  {
+    "step": "真实模型拆分目标并生成候选月历",
+    "sequence": 27,
+    "phase": "candidate",
+    "project": {
+      "id": "loom-calendar",
+      "version": 0,
+      "goal": "",
+      "deadline": null,
+      "milestones": [],
+      "tasks": [],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "",
+      "autoAdjust": false
+    },
+    "draftProject": {
+      "id": "loom-calendar",
+      "version": 0,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": []
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "",
+      "autoAdjust": false
+    },
+    "plan": {
+      "planId": "plan-3d4a9b0f1a2a4b2ea77ac8a8f4d0384e",
+      "baseVersion": 0,
+      "changes": [
+        {
+          "blockId": "block-c85821041c75475191596dbee3a1e6be",
+          "before": null,
+          "after": {
+            "id": "block-c85821041c75475191596dbee3a1e6be",
+            "taskId": "t1",
+            "start": "2026-10-01T09:40:00",
+            "end": "2026-10-01T10:40:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-c5751187e2724f36aaa27cf61b265744",
+          "before": null,
+          "after": {
+            "id": "block-c5751187e2724f36aaa27cf61b265744",
+            "taskId": "t2",
+            "start": "2026-10-01T10:40:00",
+            "end": "2026-10-01T11:10:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-230e9cb6a5384147b4b00a731b216eba",
+          "before": null,
+          "after": {
+            "id": "block-230e9cb6a5384147b4b00a731b216eba",
+            "taskId": "t3",
+            "start": "2026-10-01T11:10:00",
+            "end": "2026-10-01T12:10:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-393d19bebdb14c088dca39afb46f5fcf",
+          "before": null,
+          "after": {
+            "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+            "taskId": "t4",
+            "start": "2026-10-01T12:10:00",
+            "end": "2026-10-01T13:10:00",
+            "done": false
+          }
+        }
+      ],
+      "risks": [],
+      "exceptions": [],
+      "rationale": "根据项目目标（完成阅读记录应用演示准备）和截止日期（2026-10-08），将任务拆分为4项：检查新增记录(t1)、检查列表展示(t2)、检查本地保存(t3，依赖t1/t2)、编写讲解说明(t4，依赖前三项)。总工时3.5小时，可在10月1日单日完成，符合15分钟后的最小启动间隔要求。任务间有依赖关系但可紧凑安排。"
+    },
+    "receipt": null,
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 7757,
+      "completion_tokens": 1591,
+      "total_tokens": 9348
+    }
+  },
+  {
+    "step": "确认计划并核验本地保存结果",
+    "sequence": 30,
+    "phase": "confirmed",
+    "project": {
+      "id": "loom-calendar",
+      "version": 1,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c85821041c75475191596dbee3a1e6be",
+              "taskId": "t1",
+              "start": "2026-10-01T09:40:00",
+              "end": "2026-10-01T10:40:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c5751187e2724f36aaa27cf61b265744",
+              "taskId": "t2",
+              "start": "2026-10-01T10:40:00",
+              "end": "2026-10-01T11:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-230e9cb6a5384147b4b00a731b216eba",
+              "taskId": "t3",
+              "start": "2026-10-01T11:10:00",
+              "end": "2026-10-01T12:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+              "taskId": "t4",
+              "start": "2026-10-01T12:10:00",
+              "end": "2026-10-01T13:10:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "",
+      "autoAdjust": false
+    },
+    "draftProject": null,
+    "plan": null,
+    "receipt": {
+      "planId": "plan-3d4a9b0f1a2a4b2ea77ac8a8f4d0384e",
+      "versionBefore": 0,
+      "versionAfter": 1,
+      "readbackSnapshot": {
+        "id": "loom-calendar",
+        "version": 1,
+        "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+        "deadline": "2026-10-08T18:00:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "检查新增记录功能",
+            "priority": 2,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c85821041c75475191596dbee3a1e6be",
+                "taskId": "t1",
+                "start": "2026-10-01T09:40:00",
+                "end": "2026-10-01T10:40:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "title": "检查列表展示功能",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c5751187e2724f36aaa27cf61b265744",
+                "taskId": "t2",
+                "start": "2026-10-01T10:40:00",
+                "end": "2026-10-01T11:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "title": "检查本地保存功能",
+            "priority": 3,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-230e9cb6a5384147b4b00a731b216eba",
+                "taskId": "t3",
+                "start": "2026-10-01T11:10:00",
+                "end": "2026-10-01T12:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t4",
+            "title": "编写讲解说明文档",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2",
+              "t3"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+                "taskId": "t4",
+                "start": "2026-10-01T12:10:00",
+                "end": "2026-10-01T13:10:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 7757,
+      "completion_tokens": 1591,
+      "total_tokens": 9348
+    }
+  },
+  {
+    "step": "文字建议重构任务并保留正式计划",
+    "sequence": 36,
+    "phase": "candidate",
+    "project": {
+      "id": "loom-calendar",
+      "version": 1,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c85821041c75475191596dbee3a1e6be",
+              "taskId": "t1",
+              "start": "2026-10-01T09:40:00",
+              "end": "2026-10-01T10:40:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c5751187e2724f36aaa27cf61b265744",
+              "taskId": "t2",
+              "start": "2026-10-01T10:40:00",
+              "end": "2026-10-01T11:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-230e9cb6a5384147b4b00a731b216eba",
+              "taskId": "t3",
+              "start": "2026-10-01T11:10:00",
+              "end": "2026-10-01T12:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+              "taskId": "t4",
+              "start": "2026-10-01T12:10:00",
+              "end": "2026-10-01T13:10:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "",
+      "autoAdjust": false
+    },
+    "draftProject": {
+      "id": "loom-calendar",
+      "version": 1,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t0",
+          "title": "演示设备检查",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c85821041c75475191596dbee3a1e6be",
+              "taskId": "t1",
+              "start": "2026-10-01T09:40:00",
+              "end": "2026-10-01T10:40:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c5751187e2724f36aaa27cf61b265744",
+              "taskId": "t2",
+              "start": "2026-10-01T10:40:00",
+              "end": "2026-10-01T11:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-230e9cb6a5384147b4b00a731b216eba",
+              "taskId": "t3",
+              "start": "2026-10-01T11:10:00",
+              "end": "2026-10-01T12:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+              "taskId": "t4",
+              "start": "2026-10-01T12:10:00",
+              "end": "2026-10-01T13:10:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "\n用户修改建议：请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。",
+      "autoAdjust": false
+    },
+    "plan": {
+      "planId": "plan-992a051b829b4d428e7d0bc7cd565661",
+      "baseVersion": 1,
+      "changes": [
+        {
+          "blockId": "block-c85821041c75475191596dbee3a1e6be",
+          "before": {
+            "id": "block-c85821041c75475191596dbee3a1e6be",
+            "taskId": "t1",
+            "start": "2026-10-01T09:40:00",
+            "end": "2026-10-01T10:40:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-c5751187e2724f36aaa27cf61b265744",
+          "before": {
+            "id": "block-c5751187e2724f36aaa27cf61b265744",
+            "taskId": "t2",
+            "start": "2026-10-01T10:40:00",
+            "end": "2026-10-01T11:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-230e9cb6a5384147b4b00a731b216eba",
+          "before": {
+            "id": "block-230e9cb6a5384147b4b00a731b216eba",
+            "taskId": "t3",
+            "start": "2026-10-01T11:10:00",
+            "end": "2026-10-01T12:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-393d19bebdb14c088dca39afb46f5fcf",
+          "before": {
+            "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+            "taskId": "t4",
+            "start": "2026-10-01T12:10:00",
+            "end": "2026-10-01T13:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-25561b88f09846abb96f912e1430032c",
+          "before": null,
+          "after": {
+            "id": "block-25561b88f09846abb96f912e1430032c",
+            "taskId": "t0",
+            "start": "2026-10-01T09:41:00",
+            "end": "2026-10-01T10:11:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-7f58fe58ad314203a6f9570bb274b1e0",
+          "before": null,
+          "after": {
+            "id": "block-7f58fe58ad314203a6f9570bb274b1e0",
+            "taskId": "t1",
+            "start": "2026-10-01T10:11:00",
+            "end": "2026-10-01T11:11:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-71cb4a1647814054b5e0bbe25a69ec36",
+          "before": null,
+          "after": {
+            "id": "block-71cb4a1647814054b5e0bbe25a69ec36",
+            "taskId": "t2",
+            "start": "2026-10-01T11:11:00",
+            "end": "2026-10-01T11:41:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-affebb0caf504c238fedd39b9b3f50fc",
+          "before": null,
+          "after": {
+            "id": "block-affebb0caf504c238fedd39b9b3f50fc",
+            "taskId": "t3",
+            "start": "2026-10-01T11:41:00",
+            "end": "2026-10-01T12:41:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-f57d5173b6434c5a9dfc6343302f5094",
+          "before": null,
+          "after": {
+            "id": "block-f57d5173b6434c5a9dfc6343302f5094",
+            "taskId": "t4",
+            "start": "2026-10-01T12:41:00",
+            "end": "2026-10-01T13:41:00",
+            "done": false
+          }
+        }
+      ],
+      "risks": [],
+      "exceptions": [],
+      "rationale": "新增独立任务\"演示设备检查\"(t0, 0.5h)安排在最前面，随后顺延原有任务。t3依赖t1和t2完成，t4依赖t1、t2、t3完成。全部在10月1日工作时间内完成，无需跨天。"
+    },
+    "receipt": {
+      "planId": "plan-3d4a9b0f1a2a4b2ea77ac8a8f4d0384e",
+      "versionBefore": 0,
+      "versionAfter": 1,
+      "readbackSnapshot": {
+        "id": "loom-calendar",
+        "version": 1,
+        "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+        "deadline": "2026-10-08T18:00:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "检查新增记录功能",
+            "priority": 2,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c85821041c75475191596dbee3a1e6be",
+                "taskId": "t1",
+                "start": "2026-10-01T09:40:00",
+                "end": "2026-10-01T10:40:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "title": "检查列表展示功能",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c5751187e2724f36aaa27cf61b265744",
+                "taskId": "t2",
+                "start": "2026-10-01T10:40:00",
+                "end": "2026-10-01T11:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "title": "检查本地保存功能",
+            "priority": 3,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-230e9cb6a5384147b4b00a731b216eba",
+                "taskId": "t3",
+                "start": "2026-10-01T11:10:00",
+                "end": "2026-10-01T12:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t4",
+            "title": "编写讲解说明文档",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2",
+              "t3"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+                "taskId": "t4",
+                "start": "2026-10-01T12:10:00",
+                "end": "2026-10-01T13:10:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 10706,
+      "completion_tokens": 1686,
+      "total_tokens": 12392
+    }
+  },
+  {
+    "step": "重新启动后恢复候选与正式日历",
+    "sequence": 37,
+    "phase": "candidate",
+    "project": {
+      "id": "loom-calendar",
+      "version": 1,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c85821041c75475191596dbee3a1e6be",
+              "taskId": "t1",
+              "start": "2026-10-01T09:40:00",
+              "end": "2026-10-01T10:40:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c5751187e2724f36aaa27cf61b265744",
+              "taskId": "t2",
+              "start": "2026-10-01T10:40:00",
+              "end": "2026-10-01T11:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-230e9cb6a5384147b4b00a731b216eba",
+              "taskId": "t3",
+              "start": "2026-10-01T11:10:00",
+              "end": "2026-10-01T12:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+              "taskId": "t4",
+              "start": "2026-10-01T12:10:00",
+              "end": "2026-10-01T13:10:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "",
+      "autoAdjust": false
+    },
+    "draftProject": {
+      "id": "loom-calendar",
+      "version": 1,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t0",
+          "title": "演示设备检查",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c85821041c75475191596dbee3a1e6be",
+              "taskId": "t1",
+              "start": "2026-10-01T09:40:00",
+              "end": "2026-10-01T10:40:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c5751187e2724f36aaa27cf61b265744",
+              "taskId": "t2",
+              "start": "2026-10-01T10:40:00",
+              "end": "2026-10-01T11:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-230e9cb6a5384147b4b00a731b216eba",
+              "taskId": "t3",
+              "start": "2026-10-01T11:10:00",
+              "end": "2026-10-01T12:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+              "taskId": "t4",
+              "start": "2026-10-01T12:10:00",
+              "end": "2026-10-01T13:10:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "\n用户修改建议：请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。",
+      "autoAdjust": false
+    },
+    "plan": {
+      "planId": "plan-992a051b829b4d428e7d0bc7cd565661",
+      "baseVersion": 1,
+      "changes": [
+        {
+          "blockId": "block-c85821041c75475191596dbee3a1e6be",
+          "before": {
+            "id": "block-c85821041c75475191596dbee3a1e6be",
+            "taskId": "t1",
+            "start": "2026-10-01T09:40:00",
+            "end": "2026-10-01T10:40:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-c5751187e2724f36aaa27cf61b265744",
+          "before": {
+            "id": "block-c5751187e2724f36aaa27cf61b265744",
+            "taskId": "t2",
+            "start": "2026-10-01T10:40:00",
+            "end": "2026-10-01T11:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-230e9cb6a5384147b4b00a731b216eba",
+          "before": {
+            "id": "block-230e9cb6a5384147b4b00a731b216eba",
+            "taskId": "t3",
+            "start": "2026-10-01T11:10:00",
+            "end": "2026-10-01T12:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-393d19bebdb14c088dca39afb46f5fcf",
+          "before": {
+            "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+            "taskId": "t4",
+            "start": "2026-10-01T12:10:00",
+            "end": "2026-10-01T13:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-25561b88f09846abb96f912e1430032c",
+          "before": null,
+          "after": {
+            "id": "block-25561b88f09846abb96f912e1430032c",
+            "taskId": "t0",
+            "start": "2026-10-01T09:41:00",
+            "end": "2026-10-01T10:11:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-7f58fe58ad314203a6f9570bb274b1e0",
+          "before": null,
+          "after": {
+            "id": "block-7f58fe58ad314203a6f9570bb274b1e0",
+            "taskId": "t1",
+            "start": "2026-10-01T10:11:00",
+            "end": "2026-10-01T11:11:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-71cb4a1647814054b5e0bbe25a69ec36",
+          "before": null,
+          "after": {
+            "id": "block-71cb4a1647814054b5e0bbe25a69ec36",
+            "taskId": "t2",
+            "start": "2026-10-01T11:11:00",
+            "end": "2026-10-01T11:41:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-affebb0caf504c238fedd39b9b3f50fc",
+          "before": null,
+          "after": {
+            "id": "block-affebb0caf504c238fedd39b9b3f50fc",
+            "taskId": "t3",
+            "start": "2026-10-01T11:41:00",
+            "end": "2026-10-01T12:41:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-f57d5173b6434c5a9dfc6343302f5094",
+          "before": null,
+          "after": {
+            "id": "block-f57d5173b6434c5a9dfc6343302f5094",
+            "taskId": "t4",
+            "start": "2026-10-01T12:41:00",
+            "end": "2026-10-01T13:41:00",
+            "done": false
+          }
+        }
+      ],
+      "risks": [],
+      "exceptions": [],
+      "rationale": "新增独立任务\"演示设备检查\"(t0, 0.5h)安排在最前面，随后顺延原有任务。t3依赖t1和t2完成，t4依赖t1、t2、t3完成。全部在10月1日工作时间内完成，无需跨天。"
+    },
+    "receipt": {
+      "planId": "plan-3d4a9b0f1a2a4b2ea77ac8a8f4d0384e",
+      "versionBefore": 0,
+      "versionAfter": 1,
+      "readbackSnapshot": {
+        "id": "loom-calendar",
+        "version": 1,
+        "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+        "deadline": "2026-10-08T18:00:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "检查新增记录功能",
+            "priority": 2,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c85821041c75475191596dbee3a1e6be",
+                "taskId": "t1",
+                "start": "2026-10-01T09:40:00",
+                "end": "2026-10-01T10:40:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "title": "检查列表展示功能",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c5751187e2724f36aaa27cf61b265744",
+                "taskId": "t2",
+                "start": "2026-10-01T10:40:00",
+                "end": "2026-10-01T11:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "title": "检查本地保存功能",
+            "priority": 3,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-230e9cb6a5384147b4b00a731b216eba",
+                "taskId": "t3",
+                "start": "2026-10-01T11:10:00",
+                "end": "2026-10-01T12:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t4",
+            "title": "编写讲解说明文档",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2",
+              "t3"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+                "taskId": "t4",
+                "start": "2026-10-01T12:10:00",
+                "end": "2026-10-01T13:10:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 10706,
+      "completion_tokens": 1686,
+      "total_tokens": 12392
+    }
+  },
+  {
+    "step": "实际服务连接中断时保留正式日历与候选计划",
+    "sequence": 40,
+    "phase": "confirm_failed",
+    "project": {
+      "id": "loom-calendar",
+      "version": 1,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c85821041c75475191596dbee3a1e6be",
+              "taskId": "t1",
+              "start": "2026-10-01T09:40:00",
+              "end": "2026-10-01T10:40:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c5751187e2724f36aaa27cf61b265744",
+              "taskId": "t2",
+              "start": "2026-10-01T10:40:00",
+              "end": "2026-10-01T11:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-230e9cb6a5384147b4b00a731b216eba",
+              "taskId": "t3",
+              "start": "2026-10-01T11:10:00",
+              "end": "2026-10-01T12:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+              "taskId": "t4",
+              "start": "2026-10-01T12:10:00",
+              "end": "2026-10-01T13:10:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "",
+      "autoAdjust": false
+    },
+    "draftProject": {
+      "id": "loom-calendar",
+      "version": 1,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t0",
+          "title": "演示设备检查",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": []
+        },
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c85821041c75475191596dbee3a1e6be",
+              "taskId": "t1",
+              "start": "2026-10-01T09:40:00",
+              "end": "2026-10-01T10:40:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-c5751187e2724f36aaa27cf61b265744",
+              "taskId": "t2",
+              "start": "2026-10-01T10:40:00",
+              "end": "2026-10-01T11:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-230e9cb6a5384147b4b00a731b216eba",
+              "taskId": "t3",
+              "start": "2026-10-01T11:10:00",
+              "end": "2026-10-01T12:10:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+              "taskId": "t4",
+              "start": "2026-10-01T12:10:00",
+              "end": "2026-10-01T13:10:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "\n用户修改建议：请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。",
+      "autoAdjust": false
+    },
+    "plan": {
+      "planId": "plan-992a051b829b4d428e7d0bc7cd565661",
+      "baseVersion": 1,
+      "changes": [
+        {
+          "blockId": "block-c85821041c75475191596dbee3a1e6be",
+          "before": {
+            "id": "block-c85821041c75475191596dbee3a1e6be",
+            "taskId": "t1",
+            "start": "2026-10-01T09:40:00",
+            "end": "2026-10-01T10:40:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-c5751187e2724f36aaa27cf61b265744",
+          "before": {
+            "id": "block-c5751187e2724f36aaa27cf61b265744",
+            "taskId": "t2",
+            "start": "2026-10-01T10:40:00",
+            "end": "2026-10-01T11:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-230e9cb6a5384147b4b00a731b216eba",
+          "before": {
+            "id": "block-230e9cb6a5384147b4b00a731b216eba",
+            "taskId": "t3",
+            "start": "2026-10-01T11:10:00",
+            "end": "2026-10-01T12:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-393d19bebdb14c088dca39afb46f5fcf",
+          "before": {
+            "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+            "taskId": "t4",
+            "start": "2026-10-01T12:10:00",
+            "end": "2026-10-01T13:10:00",
+            "done": false
+          },
+          "after": null
+        },
+        {
+          "blockId": "block-25561b88f09846abb96f912e1430032c",
+          "before": null,
+          "after": {
+            "id": "block-25561b88f09846abb96f912e1430032c",
+            "taskId": "t0",
+            "start": "2026-10-01T09:41:00",
+            "end": "2026-10-01T10:11:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-7f58fe58ad314203a6f9570bb274b1e0",
+          "before": null,
+          "after": {
+            "id": "block-7f58fe58ad314203a6f9570bb274b1e0",
+            "taskId": "t1",
+            "start": "2026-10-01T10:11:00",
+            "end": "2026-10-01T11:11:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-71cb4a1647814054b5e0bbe25a69ec36",
+          "before": null,
+          "after": {
+            "id": "block-71cb4a1647814054b5e0bbe25a69ec36",
+            "taskId": "t2",
+            "start": "2026-10-01T11:11:00",
+            "end": "2026-10-01T11:41:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-affebb0caf504c238fedd39b9b3f50fc",
+          "before": null,
+          "after": {
+            "id": "block-affebb0caf504c238fedd39b9b3f50fc",
+            "taskId": "t3",
+            "start": "2026-10-01T11:41:00",
+            "end": "2026-10-01T12:41:00",
+            "done": false
+          }
+        },
+        {
+          "blockId": "block-f57d5173b6434c5a9dfc6343302f5094",
+          "before": null,
+          "after": {
+            "id": "block-f57d5173b6434c5a9dfc6343302f5094",
+            "taskId": "t4",
+            "start": "2026-10-01T12:41:00",
+            "end": "2026-10-01T13:41:00",
+            "done": false
+          }
+        }
+      ],
+      "risks": [],
+      "exceptions": [],
+      "rationale": "新增独立任务\"演示设备检查\"(t0, 0.5h)安排在最前面，随后顺延原有任务。t3依赖t1和t2完成，t4依赖t1、t2、t3完成。全部在10月1日工作时间内完成，无需跨天。"
+    },
+    "receipt": {
+      "planId": "plan-3d4a9b0f1a2a4b2ea77ac8a8f4d0384e",
+      "versionBefore": 0,
+      "versionAfter": 1,
+      "readbackSnapshot": {
+        "id": "loom-calendar",
+        "version": 1,
+        "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+        "deadline": "2026-10-08T18:00:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "t1",
+            "title": "检查新增记录功能",
+            "priority": 2,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c85821041c75475191596dbee3a1e6be",
+                "taskId": "t1",
+                "start": "2026-10-01T09:40:00",
+                "end": "2026-10-01T10:40:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "title": "检查列表展示功能",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-c5751187e2724f36aaa27cf61b265744",
+                "taskId": "t2",
+                "start": "2026-10-01T10:40:00",
+                "end": "2026-10-01T11:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "title": "检查本地保存功能",
+            "priority": 3,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-230e9cb6a5384147b4b00a731b216eba",
+                "taskId": "t3",
+                "start": "2026-10-01T11:10:00",
+                "end": "2026-10-01T12:10:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t4",
+            "title": "编写讲解说明文档",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2",
+              "t3"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-393d19bebdb14c088dca39afb46f5fcf",
+                "taskId": "t4",
+                "start": "2026-10-01T12:10:00",
+                "end": "2026-10-01T13:10:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 10706,
+      "completion_tokens": 1686,
+      "total_tokens": 12392
+    }
+  },
+  {
+    "step": "重新启动后恢复待核验候选并成功确认",
+    "sequence": 43,
+    "phase": "confirmed",
+    "project": {
+      "id": "loom-calendar",
+      "version": 2,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t0",
+          "title": "演示设备检查",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-25561b88f09846abb96f912e1430032c",
+              "taskId": "t0",
+              "start": "2026-10-01T09:41:00",
+              "end": "2026-10-01T10:11:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-7f58fe58ad314203a6f9570bb274b1e0",
+              "taskId": "t1",
+              "start": "2026-10-01T10:11:00",
+              "end": "2026-10-01T11:11:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-71cb4a1647814054b5e0bbe25a69ec36",
+              "taskId": "t2",
+              "start": "2026-10-01T11:11:00",
+              "end": "2026-10-01T11:41:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-affebb0caf504c238fedd39b9b3f50fc",
+              "taskId": "t3",
+              "start": "2026-10-01T11:41:00",
+              "end": "2026-10-01T12:41:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-f57d5173b6434c5a9dfc6343302f5094",
+              "taskId": "t4",
+              "start": "2026-10-01T12:41:00",
+              "end": "2026-10-01T13:41:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "\n用户修改建议：请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。",
+      "autoAdjust": false
+    },
+    "draftProject": null,
+    "plan": null,
+    "receipt": {
+      "planId": "plan-992a051b829b4d428e7d0bc7cd565661",
+      "versionBefore": 1,
+      "versionAfter": 2,
+      "readbackSnapshot": {
+        "id": "loom-calendar",
+        "version": 2,
+        "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+        "deadline": "2026-10-08T18:00:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "t0",
+            "title": "演示设备检查",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-25561b88f09846abb96f912e1430032c",
+                "taskId": "t0",
+                "start": "2026-10-01T09:41:00",
+                "end": "2026-10-01T10:11:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t1",
+            "title": "检查新增记录功能",
+            "priority": 2,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-7f58fe58ad314203a6f9570bb274b1e0",
+                "taskId": "t1",
+                "start": "2026-10-01T10:11:00",
+                "end": "2026-10-01T11:11:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "title": "检查列表展示功能",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-71cb4a1647814054b5e0bbe25a69ec36",
+                "taskId": "t2",
+                "start": "2026-10-01T11:11:00",
+                "end": "2026-10-01T11:41:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "title": "检查本地保存功能",
+            "priority": 3,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-affebb0caf504c238fedd39b9b3f50fc",
+                "taskId": "t3",
+                "start": "2026-10-01T11:41:00",
+                "end": "2026-10-01T12:41:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t4",
+            "title": "编写讲解说明文档",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2",
+              "t3"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-f57d5173b6434c5a9dfc6343302f5094",
+                "taskId": "t4",
+                "start": "2026-10-01T12:41:00",
+                "end": "2026-10-01T13:41:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "\n用户修改建议：请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 10706,
+      "completion_tokens": 1686,
+      "total_tokens": 12392
+    }
+  },
+  {
+    "step": "重新启动后恢复正式日历与核验回执",
+    "sequence": 44,
+    "phase": "confirmed",
+    "project": {
+      "id": "loom-calendar",
+      "version": 2,
+      "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+      "deadline": "2026-10-08T18:00:00",
+      "milestones": [],
+      "tasks": [
+        {
+          "id": "t0",
+          "title": "演示设备检查",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-25561b88f09846abb96f912e1430032c",
+              "taskId": "t0",
+              "start": "2026-10-01T09:41:00",
+              "end": "2026-10-01T10:11:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t1",
+          "title": "检查新增记录功能",
+          "priority": 2,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-7f58fe58ad314203a6f9570bb274b1e0",
+              "taskId": "t1",
+              "start": "2026-10-01T10:11:00",
+              "end": "2026-10-01T11:11:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t2",
+          "title": "检查列表展示功能",
+          "priority": 2,
+          "remainingHours": 0.5,
+          "done": false,
+          "dependsOn": [],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-71cb4a1647814054b5e0bbe25a69ec36",
+              "taskId": "t2",
+              "start": "2026-10-01T11:11:00",
+              "end": "2026-10-01T11:41:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t3",
+          "title": "检查本地保存功能",
+          "priority": 3,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-affebb0caf504c238fedd39b9b3f50fc",
+              "taskId": "t3",
+              "start": "2026-10-01T11:41:00",
+              "end": "2026-10-01T12:41:00",
+              "done": false
+            }
+          ]
+        },
+        {
+          "id": "t4",
+          "title": "编写讲解说明文档",
+          "priority": 1,
+          "remainingHours": 1,
+          "done": false,
+          "dependsOn": [
+            "t1",
+            "t2",
+            "t3"
+          ],
+          "adjustable": false,
+          "blocks": [
+            {
+              "id": "block-f57d5173b6434c5a9dfc6343302f5094",
+              "taskId": "t4",
+              "start": "2026-10-01T12:41:00",
+              "end": "2026-10-01T13:41:00",
+              "done": false
+            }
+          ]
+        }
+      ],
+      "fixedEvents": [],
+      "workHours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "restDays": [
+        5,
+        6
+      ],
+      "preferences": "\n用户修改建议：请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。",
+      "autoAdjust": false
+    },
+    "draftProject": null,
+    "plan": null,
+    "receipt": {
+      "planId": "plan-992a051b829b4d428e7d0bc7cd565661",
+      "versionBefore": 1,
+      "versionAfter": 2,
+      "readbackSnapshot": {
+        "id": "loom-calendar",
+        "version": 2,
+        "goal": "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。",
+        "deadline": "2026-10-08T18:00:00",
+        "milestones": [],
+        "tasks": [
+          {
+            "id": "t0",
+            "title": "演示设备检查",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-25561b88f09846abb96f912e1430032c",
+                "taskId": "t0",
+                "start": "2026-10-01T09:41:00",
+                "end": "2026-10-01T10:11:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t1",
+            "title": "检查新增记录功能",
+            "priority": 2,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-7f58fe58ad314203a6f9570bb274b1e0",
+                "taskId": "t1",
+                "start": "2026-10-01T10:11:00",
+                "end": "2026-10-01T11:11:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "title": "检查列表展示功能",
+            "priority": 2,
+            "remainingHours": 0.5,
+            "done": false,
+            "dependsOn": [],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-71cb4a1647814054b5e0bbe25a69ec36",
+                "taskId": "t2",
+                "start": "2026-10-01T11:11:00",
+                "end": "2026-10-01T11:41:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "title": "检查本地保存功能",
+            "priority": 3,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-affebb0caf504c238fedd39b9b3f50fc",
+                "taskId": "t3",
+                "start": "2026-10-01T11:41:00",
+                "end": "2026-10-01T12:41:00",
+                "done": false
+              }
+            ]
+          },
+          {
+            "id": "t4",
+            "title": "编写讲解说明文档",
+            "priority": 1,
+            "remainingHours": 1,
+            "done": false,
+            "dependsOn": [
+              "t1",
+              "t2",
+              "t3"
+            ],
+            "adjustable": false,
+            "blocks": [
+              {
+                "id": "block-f57d5173b6434c5a9dfc6343302f5094",
+                "taskId": "t4",
+                "start": "2026-10-01T12:41:00",
+                "end": "2026-10-01T13:41:00",
+                "done": false
+              }
+            ]
+          }
+        ],
+        "fixedEvents": [],
+        "workHours": {
+          "start": "09:00",
+          "end": "18:00"
+        },
+        "restDays": [
+          5,
+          6
+        ],
+        "preferences": "\n用户修改建议：请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。",
+        "autoAdjust": false
+      },
+      "status": "verified",
+      "reason": ""
+    },
+    "modelCalls": 3,
+    "usage": {
+      "prompt_tokens": 10706,
+      "completion_tokens": 1686,
+      "total_tokens": 12392
+    }
+  }
+]

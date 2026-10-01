@@ -1,1065 +1,589 @@
-let project = {
-    id: "loom-current", version: 0, goal: "", deadline: nil,
-    milestones: [], tasks: [], fixedEvents: [],
-    workHours: {start: "09:00", end: "18:00"},
-    restDays: [5, 6], preferences: "", autoAdjust: false
+let ink = #x19332f
+let muted = #x60736d
+let faint = #x85958f
+let line = #xdfe7e2
+let brand = #x1e6255
+let brand_soft = #xe8f2ed
+let purple = #x65518f
+let purple_soft = #xf1edf8
+let gold = #x835318
+let gold_soft = #xfff3dc
+let gold_line = #xe7c992
+let fixed_ink = #x5b6863
+let chinese = mod.text.TextStyle{
+    font_size: 10.5 line_spacing: 1.5
+    font_family: mod.text.FontFamily{
+        regular := mod.text.FontMember{res: http_resource("{{assets}}/assets/fonts/NotoSansSC.ttf") weight: 400}
+    }
 }
-let app_state = {
-    schema: 2, sequence: 0, project: project, nextTask: 1,
-    deadlineDays: 7, workStart: 9, workEnd: 18, utcOffset: 0,
-    agent: nil, plan: nil, receipt: nil, undo: nil, history: [], pendingVerification: nil, proposals: []
+let chinese_bold = mod.text.TextStyle{
+    font_size: 15 line_spacing: 1.5
+    font_family: mod.text.FontFamily{
+        bold := mod.text.FontMember{res: http_resource("{{assets}}/assets/fonts/NotoSansSC.ttf") weight: 700}
+    }
 }
-let status_text = "请录入项目目标并保存"
+let chinese_medium = mod.text.TextStyle{
+    font_size: 10.5 line_spacing: 1.5
+    font_family: mod.text.FontFamily{
+        medium := mod.text.FontMember{res: http_resource("{{assets}}/assets/fonts/NotoSansSC.ttf") weight: 500}
+    }
+}
+let english = mod.text.TextStyle{
+    font_size: 18
+    font_family: mod.text.FontFamily{
+        bold := mod.text.FontMember{res: http_resource("{{assets}}/assets/fonts/Manrope.ttf") weight: 700}
+    }
+}
+let Text = Label{padding: 0 draw_text +: {color: ink text_style: chinese}}
+let Small = Text{draw_text +: {color: muted text_style.font_size: 9}}
+let Heading = Text{draw_text.text_style: chinese_bold}
+let Card = RoundedView{width: Fill height: Fit flow: Down padding: 24 spacing: 16
+    draw_bg +: {color: #xffffff border_color: line border_size: 1 border_radius: 16}}
+let Action = ButtonFlat{height: 40 padding: Inset{left: 16 right: 16}
+    draw_bg +: {color: brand color_hover: #x287665 color_down: #x174f44 color_disabled: #xdfe7e2 border_radius: 8}
+    draw_text +: {color: #xffffff color_hover: #xffffff color_down: #xffffff color_disabled: faint text_style: chinese_medium}}
+let Subtle = Action{draw_bg +: {color: #xffffff color_hover: brand_soft color_down: #xdfe7e2 border_color: line border_size: 1}
+    draw_text +: {color: ink color_hover: brand color_down: brand}}
+let Input = TextInput{height: 40 width: Fill padding: Inset{left: 12 right: 12 top: 8 bottom: 8}
+    draw_bg +: {color: #xffffff color_hover: #xf5f7f6 color_focus: #xe8f2ed color_empty: #xffffff border_color: line border_size: 1 border_radius: 8}
+    draw_text +: {color: ink color_hover: ink color_focus: ink color_empty: faint color_empty_hover: faint text_style: chinese}}
+let project = {id: "loom-calendar", version: 0, goal: "", deadline: nil, milestones: [], tasks: [], fixedEvents: [],
+    workHours: {start: "09:00", end: "18:00"}, restDays: [5, 6], preferences: "", autoAdjust: false}
+let app_state = {schema: 3, sequence: 0, project: project, draftProject: nil, plan: nil, receipt: nil,
+    pendingVerification: nil, calendar: {}, capacity: nil, agent: nil, activeJob: nil,
+    lastRequest: nil, phase: "idle", error: "", savedAt: "", inputGoal: "", inputDeadline: "",
+    inputAdvice: "", utcOffset: 0, timezone: "", month: 0, selectedDay: 0, showingFormal: false}
+let displayed = project
 let busy = false
-let api_origin = "https://invitation-newport-commands-collections.trycloudflare.com"
-let trace_rows = []
-let calendar = {}
-let page = "settings"
-let editing_task = nil
-let editing_proposal = nil
-let trace_details = false
-let ink = #x172033
-let muted = #x64748b
-let Action = ButtonFlat{
-    height: 36 padding: Inset{left: 12 right: 12}
-    draw_bg +: {color: #x2563eb color_hover: #x1d4ed8 color_down: #x1e40af border_radius: 8.0}
-    draw_text +: {color: #xffffff color_hover: #xffffff color_down: #xffffff}
-}
-let Input = TextInput{
-    height: 36 width: Fill
-    draw_bg +: {color: #xf1f5f9 color_hover: #xe2e8f0 color_focus: #xe2e8f0 color_empty: #xf1f5f9}
-    draw_text +: {color: ink color_hover: ink color_focus: ink color_empty: muted color_empty_hover: muted}
-}
+let editing_goal = true
+let loaded = false
+let progress_text = ""
+let status_text = "填写目标与截止日期，自动生成每日安排"
+let api_origin = "https://quotes-geographical-per-foreign.trycloudflare.com"
 
 fn clone_value(value) { return value.to_json().parse_json() }
+fn has_field(value, name) { for key item in value { if "" + key == name { return true } }; return false }
 fn padded(value) { return (if value < 10 { "0" } else { "" }) + value }
 fn calendar_iso(epoch) {
     let parts = local_time(epoch)
-    return "" + parts.year + "-" + padded(parts.month) + "-" + padded(parts.day) +
-           "T" + padded(parts.hour) + ":" + padded(parts.minute) + ":00"
+    return "" + parts.year + "-" + padded(parts.month) + "-" + padded(parts.day) + "T" + padded(parts.hour) + ":" + padded(parts.minute) + ":00"
 }
-fn current_iso() { return calendar_iso(time_now() + app_state.utcOffset * 3600) }
-fn show_status(text) { status_text = text; ui.status_label.set_text(text) }
-fn has_field(value, name) {
-    for key item in value { if "" + key == name { return true } }
-    return false
-}
-fn contains_value(values, wanted) {
-    for value in values { if value == wanted { return true } }
-    return false
-}
-fn select_page(value) {
-    page = value
-    ui.settings.set_visible(value == "settings")
-    ui.task_entry.set_visible(value == "tasks")
-    ui.task_list.set_visible(value == "tasks")
-    ui.planning.set_visible(value == "plan")
-    ui.plan_panel.set_visible(value == "plan")
-    ui.calendar_panel.set_visible(value == "calendar")
-    ui.trace_panel.set_visible(value == "trace")
-    if value == "tasks" { ui.task_list.render() }
-    if value == "plan" { ui.plan_panel.render() }
-    if value == "calendar" { ui.calendar_panel.render() }
-    if value == "trace" { ui.trace_panel.render() }
-}
-fn task_by_id(value, identifier) {
-    for task in value.tasks { if task.id == identifier { return task } }
+fn date_text(epoch) { return calendar_iso(epoch).split("T")[0] }
+fn clock_text(epoch) { let parts = local_time(epoch); return padded(parts.hour) + ":" + padded(parts.minute) }
+fn now_epoch() { return time_now() + app_state.utcOffset * 3600 }
+fn current_iso() { return calendar_iso(now_epoch()) }
+fn today_epoch() { return floor(now_epoch() / 86400) * 86400 }
+fn month_start(epoch) { return floor(epoch / 86400) * 86400 - (local_time(epoch).day - 1) * 86400 }
+fn next_month(epoch) { return month_start(month_start(epoch) + 32 * 86400) }
+fn previous_month(epoch) { return month_start(month_start(epoch) - 86400) }
+fn deadline_epoch(text) {
+    let today = today_epoch()
+    for index in 367 { let day = today + index * 86400; if date_text(day) == text { return day + 18 * 3600 } }
     return nil
 }
+fn task_by_id(value, identifier) { for task in value.tasks { if task.id == identifier { return task } }; return nil }
 fn block_by_id(value, identifier) {
-    for task in value.tasks {
-        for block in task.blocks { if block.id == identifier { return block } }
-    }
-    return nil
+    for task in value.tasks { for block in task.blocks { if block.id == identifier { return block } } }; return nil
 }
 fn same_block(left, right) {
     if left == nil or right == nil { return left == nil and right == nil }
-    return left.id == right.id and left.taskId == right.taskId and
-           left.start == right.start and left.end == right.end and left.done == right.done
+    return left.id == right.id and left.taskId == right.taskId and left.start == right.start and left.end == right.end and left.done == right.done
 }
-fn plan_project(approved) {
-    assert(approved.baseVersion == project.version)
-    let result = clone_value(project)
-    let seen = []
+fn plan_project(base, approved) {
+    assert(base.version == approved.baseVersion)
+    let result = clone_value(base)
+    let seen = {}
     for change in approved.changes {
-        assert(!contains_value(seen, change.blockId))
-        seen.push(change.blockId)
-        assert(same_block(block_by_id(project, change.blockId), change.before))
+        assert(!has_field(seen, change.blockId)); seen[change.blockId] = true
+        assert(same_block(block_by_id(base, change.blockId), change.before))
         for task in result.tasks {
-            let kept = []
-            for block in task.blocks { if block.id != change.blockId { kept.push(block) } }
-            task.blocks = kept
+            let kept = []; for block in task.blocks { if block.id != change.blockId { kept.push(block) } }; task.blocks = kept
         }
         if change.after != nil {
             assert(change.after.id == change.blockId)
-            let owner = task_by_id(result, change.after.taskId)
-            assert(owner != nil)
+            let owner = task_by_id(result, change.after.taskId); assert(owner != nil)
             owner.blocks.push(clone_value(change.after))
         }
     }
-    result.version = project.version + 1
+    result.version = base.version + 1
     return result
-}
-fn local_schedule_error(target) {
-    let ids = []
-    let all_blocks = []
-    let current = time_now() + app_state.utcOffset * 3600
-    for task in target.tasks {
-        let hours = 0
-        let latest = 0
-        let earliest = 999999999999
-        for block in task.blocks {
-            if block.taskId != task.id { return "时间块任务归属不一致" }
-            if contains_value(ids, block.id) { return "时间块编号重复" }
-            ids.push(block.id)
-            if !has_field(calendar, block.start) or !has_field(calendar, block.end) {
-                return "时间资料缺失"
-            }
-            let start = calendar[block.start]
-            let end = calendar[block.end]
-            if end <= start { return "结束时间必须晚于开始时间" }
-            if calendar_iso(start) != block.start or calendar_iso(end) != block.end { return "时间资料与日历不一致" }
-            let old = block_by_id(project, block.id)
-            let locked = old != nil and (old.done or calendar[old.start] < current)
-            if locked {
-                if !same_block(old, block) { return "已经开始或完成的时间块被修改" }
-            } else {
-                if block.done or task.done or start < current { return "未来安排的完成状态或开始时间非法" }
-                let left = local_time(start)
-                let right = local_time(end)
-                if left.year != right.year or left.month != right.month or left.day != right.day {
-                    return "时间块不能跨越日期"
-                }
-                let weekday = (left.weekday + 6) % 7
-                if contains_value(project.restDays, weekday) { return "时间块位于休息日" }
-                if left.hour + left.minute / 60 < app_state.workStart or
-                   right.hour + right.minute / 60 > app_state.workEnd { return "时间块超出工作时间" }
-                for event in project.fixedEvents {
-                    if !has_field(calendar, event.start) or !has_field(calendar, event.end) { return "固定日程时间资料缺失" }
-                    if max(start, calendar[event.start]) < min(end, calendar[event.end]) { return "时间块与固定日程重叠" }
-                }
-                hours = hours + (end - start) / 3600
-                earliest = min(earliest, start)
-                latest = max(latest, end)
-            }
-            for prior in all_blocks {
-                if max(start, calendar[prior.start]) < min(end, calendar[prior.end]) { return "任务时间块重叠" }
-            }
-            all_blocks.push(block)
-        }
-        let expected = if task.done { 0 } else { task.remainingHours }
-        if abs(hours - expected) > 0.000001 { return "任务 " + task.id + " 的未来工时与剩余工时不一致" }
-        for dependency in task.dependsOn {
-            let before = task_by_id(target, dependency)
-            if before == nil { return "依赖任务不存在" }
-            if !before.done and before.remainingHours > 0 and expected > 0 {
-                let predecessor_end = 0
-                for block in before.blocks {
-                    if !block.done and calendar[block.start] >= current {
-                        predecessor_end = max(predecessor_end, calendar[block.end])
-                    }
-                }
-                if predecessor_end == 0 or earliest < predecessor_end { return "任务开始早于依赖任务完成" }
-            }
-        }
-    }
-    for task in project.tasks {
-        for old in task.blocks {
-            if old.done or calendar[old.start] < current {
-                if !same_block(old, block_by_id(target, old.id)) { return "已经开始或完成的时间块被遗漏" }
-            }
-        }
-    }
-    return ""
-}
-fn approve_plan() {
-    if busy or app_state.plan == nil { return }
-    let approved = clone_value(app_state.plan)
-    if approved.baseVersion != project.version {
-        app_state.plan = nil
-        save_state()
-        ui.plan_panel.render()
-        show_status("项目版本已变化，请重新生成方案")
-        return
-    }
-    let target = plan_project(approved)
-    let error_text = local_schedule_error(target)
-    if error_text != "" { show_status("本地复核未通过：" + error_text); return }
-    busy = true
-    let before = clone_value(project)
-    app_state.undo = {project: before, expectedVersion: target.version}
-    project = target
-    app_state.plan = nil
-    app_state.receipt = nil
-    app_state.pendingVerification = {plan: approved, before: before}
-    save_state()
-    verify_pending()
-}
-fn verify_pending() {
-    if !has_field(app_state, "pendingVerification") { return }
-    if app_state.pendingVerification == nil { return }
-    let approved = app_state.pendingVerification.plan
-    let before = app_state.pendingVerification.before
-    let operation = if has_field(app_state.pendingVerification, "kind") { app_state.pendingVerification.kind } else { "approval" }
-    busy = true
-    let readback = newest_record()
-    assert(readback != nil)
-    if readback.project.version != before.version + 1 {
-        busy = false
-        show_status("待核验方案的项目版本已变化")
-        assert(false)
-    }
-    show_status("日历已保存，正在核验回读结果")
-    let outcome = request_api("/v1/agent/verify", {
-        plan: approved, versionBefore: before.version, versionAfter: project.version,
-        beforeSnapshot: before, readbackSnapshot: readback.project
-    }).await()
-    busy = false
-    if outcome.failed != "" { show_status("日历已保存，核验请求失败：" + outcome.failed); return }
-    let response = outcome.response
-    if response.status_code >= 400 {
-        show_status("日历已保存，核验失败：" + response.body.to_string())
-        assert(false)
-    }
-    app_state.receipt = response.body.to_string().parse_json()
-    app_state.pendingVerification = nil
-    app_state.history.push({type: operation, planId: approved.planId, version: project.version,
-        status: app_state.receipt.status, time: current_iso()})
-    save_state()
-    select_page("calendar")
-    if app_state.receipt.status == "verified" {
-        show_status((if operation == "undo" { "撤销已完成并核验，版本 " } else { "日历已保存并核验，版本 " }) + project.version)
-    } else { show_status("核验未通过：" + app_state.receipt.reason) }
-}
-fn calendar_diff(before, target) {
-    let changes = []
-    for task in before.tasks {
-        for block in task.blocks {
-            let replacement = block_by_id(target, block.id)
-            if !same_block(block, replacement) {
-                changes.push({blockId: block.id, before: clone_value(block), after: clone_value(replacement)})
-            }
-        }
-    }
-    for task in target.tasks {
-        for block in task.blocks {
-            if block_by_id(before, block.id) == nil {
-                changes.push({blockId: block.id, before: nil, after: clone_value(block)})
-            }
-        }
-    }
-    return {planId: "undo-" + app_state.sequence, baseVersion: before.version, changes: changes,
-            risks: [], exceptions: [], rationale: "恢复此前日历，保留当前任务工时与实际完成事实"}
-}
-fn undo_calendar() {
-    if busy or app_state.undo == nil { return }
-    let previous = app_state.undo.project
-    let target = clone_value(project)
-    let current = time_now() + app_state.utcOffset * 3600
-    for task in target.tasks {
-        let old_task = task_by_id(previous, task.id)
-        if old_task != nil { task.blocks = clone_value(old_task.blocks) }
-        let actual_task = task_by_id(project, task.id)
-        for actual in actual_task.blocks {
-            if actual.done or calendar[actual.start] < current {
-                let kept = []
-                for block in task.blocks { if block.id != actual.id { kept.push(block) } }
-                kept.push(clone_value(actual))
-                task.blocks = kept
-            }
-        }
-    }
-    target.version = project.version + 1
-    let error_text = local_schedule_error(target)
-    if error_text != "" { show_status("无法撤销，此前安排不符合当前状态：" + error_text); return }
-    let before = clone_value(project)
-    let approved = calendar_diff(before, target)
-    busy = true
-    app_state.undo = nil
-    app_state.plan = nil
-    app_state.agent = nil
-    app_state.receipt = nil
-    app_state.pendingVerification = {kind: "undo", plan: approved, before: before}
-    project = target
-    save_state()
-    verify_pending()
-}
-fn request_api(path, body) {
-    let pending = promise()
-    let finished = false
-    let timer = start_timeout(660, || {
-        if !finished {
-            finished = true
-            busy = false
-            show_status("服务请求超过等待时间，本轮已停止")
-            pending.resolve({failed: "服务请求超过等待时间，本轮已停止", response: nil})
-        }
-    })
-    let started = net.http_request(net.HttpRequest{
-        url: api_origin + path method: if body == nil { net.HttpMethod.GET } else { net.HttpMethod.POST }
-        headers: {"Content-Type": "application/json"}
-        body: if body == nil { nil } else { body.to_json().to_bytes() }
-    }) do net.HttpEvents{
-        on_response: |response| {
-            println("Loom HTTP " + path + " " + response.status_code)
-            if !finished {
-                finished = true
-                stop_timer(timer)
-                pending.resolve({failed: "", response: response})
-            }
-        }
-        on_error: |error| {
-            if !finished {
-                finished = true
-                stop_timer(timer)
-                pending.resolve({failed: error.message, response: nil})
-            }
-        }
-    }
-    return pending
-}
-fn request_planning(body) {
-    let outcome = request_api("/v1/agent/jobs", body).await()
-    if outcome.failed != "" or outcome.response.status_code >= 400 { return outcome }
-    let job = outcome.response.body.to_string().parse_json()
-    assert(has_field(job, "jobId"))
-    let started = time_now()
-    loop {
-        outcome = request_api("/v1/agent/jobs/" + job.jobId, nil).await()
-        if outcome.failed != "" or outcome.response.status_code >= 400 { return outcome }
-        let status = outcome.response.body.to_string().parse_json()
-        assert(has_field(status, "status"))
-        if status.status == "complete" { return {failed: "", result: status.result, response: outcome.response} }
-        if time_now() - started > 650 { return {failed: "规划超过等待时间，本轮已停止", response: nil} }
-    }
-}
-fn automatic_allowed() {
-    let plan = app_state.plan
-    if plan == nil or !project.autoAdjust { return false }
-    if plan.baseVersion != project.version or plan.risks.len() > 0 or plan.exceptions.len() > 0 { return false }
-    for change in plan.changes {
-        if change.before != nil {
-            let task = task_by_id(project, change.before.taskId)
-            if task == nil or !task.adjustable { return false }
-        }
-        if change.after != nil {
-            let task = task_by_id(project, change.after.taskId)
-            if task == nil or !task.adjustable { return false }
-        }
-    }
-    return local_schedule_error(plan_project(plan)) == ""
-}
-fn start_planning(trigger) {
-    if busy { return }
-    if project.goal.trim() == "" { show_status("请先保存项目目标"); return }
-    if project.tasks.len() == 0 and trigger != "propose" and trigger != "resume" {
-        show_status("请先添加任务或生成任务建议"); return
-    }
-    busy = true
-    show_status("正在请求真实模型规划，请等待")
-    let request = {snapshot: project, trigger: trigger, now: current_iso()}
-    if trigger == "resume" {
-        if app_state.agent == nil or app_state.agent.status != "clarified" {
-            busy = false; show_status("没有可恢复的暂停过程"); return
-        }
-        let answer = ui.answer_input.text().trim()
-        if answer == "" { busy = false; show_status("请填写回答"); return }
-        request.state = app_state.agent
-        request.clarificationAnswer = answer
-    }
-    app_state.plan = nil
-    trace_rows = []
-    save_state()
-    let outcome = request_planning(request)
-    busy = false
-    if outcome.failed != "" {
-        app_state.agent = nil
-        save_state()
-        select_page("plan")
-        show_status("规划请求失败，本轮已停止：" + outcome.failed)
-        return
-    }
-    let response = outcome.response
-    if response.status_code >= 400 {
-        app_state.agent = nil
-        save_state()
-        select_page("plan")
-        let detail = response.body.to_string()
-        if detail.len() > 1000 { detail = "网络或服务无法完成请求，请查看服务日志" }
-        show_status("规划失败，服务返回 " + response.status_code + "，本轮已停止：" + detail)
-        return
-    }
-    let result = outcome.result
-    trace_rows = result.trace
-    app_state.agent = result.state
-    if has_field(result, "capacity") { app_state.capacity = result.capacity }
-    if result.type == "plan" {
-        app_state.plan = result.payload
-        calendar = result.calendar
-        app_state.calendar = calendar
-        app_state.capacity = result.capacity
-        show_status("方案已生成，尚未执行；请查看理由与变更")
-    } elif result.type == "tasks" {
-        app_state.proposals = result.payload.tasks
-        app_state.plan = nil
-        show_status("任务建议已生成，请修改并确认")
-    } elif result.type == "clarify" {
-        app_state.plan = nil
-        show_status("需要回答：" + result.payload.question)
-    } else {
-        app_state.plan = nil
-        show_status("规划停止：" + result.payload.reason)
-    }
-    save_state()
-    select_page("plan")
-    if (trigger == "delay" or (trigger == "resume" and app_state.agent.trigger == "delay")) and automatic_allowed() { approve_plan() }
-}
-fn open_proposal(index) {
-    if busy { return }
-    editing_proposal = index
-    let task = app_state.proposals[index]
-    ui.proposal_edit_title.set_text(task.title)
-    ui.proposal_edit_hours.set_text("" + task.remainingHours)
-    ui.proposal_edit_priority.set_text("" + task.priority)
-    let dependencies = ""
-    for dependency in task.dependsOn {
-        dependencies = dependencies + (if dependencies == "" { "" } else { "," }) + dependency
-    }
-    ui.proposal_edit_dependencies.set_text(dependencies)
-    ui.proposal_form.set_visible(true)
-    show_status("正在修改任务建议：" + task.id)
-}
-fn proposals_error(values) {
-    let combined = clone_value(project)
-    let ids = []
-    for task in project.tasks { ids.push(task.id) }
-    for task in values {
-        if task.id.trim() == "" or task.title.trim() == "" { return "任务编号和标题不能为空" }
-        if contains_value(ids, task.id) { return "任务编号重复：" + task.id }
-        if !(task.remainingHours > 0 and task.remainingHours <= 720 and task.priority >= 1 and
-             task.priority <= 5 and floor(task.priority) == task.priority) { return "任务工时或优先级非法" }
-        ids.push(task.id)
-        combined.tasks.push(clone_value(task))
-    }
-    for task in values {
-        let dependencies = []
-        for dependency in task.dependsOn {
-            if !contains_value(ids, dependency) or contains_value(dependencies, dependency) {
-                return "依赖编号不存在或重复：" + dependency
-            }
-            dependencies.push(dependency)
-        }
-        if dependency_cycle(combined, task.id, []) { return "任务建议的依赖形成循环" }
-    }
-    return ""
-}
-fn save_proposal_edit() {
-    if busy or editing_proposal == nil { return }
-    let values = clone_value(app_state.proposals)
-    let task = values[editing_proposal]
-    task.title = ui.proposal_edit_title.text().trim()
-    task.remainingHours = ui.proposal_edit_hours.text().trim().to_f64()
-    task.priority = ui.proposal_edit_priority.text().trim().to_f64()
-    task.dependsOn = []
-    let entered = ui.proposal_edit_dependencies.text().trim()
-    if entered != "" { for raw in entered.split(",") { task.dependsOn.push(raw.trim()) } }
-    let error_text = proposals_error(values)
-    if error_text != "" { show_status("建议无法保存：" + error_text); return }
-    app_state.proposals = values
-    save_state()
-    ui.proposal_form.set_visible(false)
-    ui.plan_panel.render()
-    show_status("任务建议的修改已保存")
-}
-fn accept_proposals() {
-    if busy or app_state.proposals.len() == 0 { return }
-    let error_text = proposals_error(app_state.proposals)
-    if error_text != "" { show_status("建议无法加入项目：" + error_text); return }
-    for task in app_state.proposals { project.tasks.push(clone_value(task)) }
-    app_state.proposals = []
-    editing_proposal = nil
-    ui.proposal_form.set_visible(false)
-    select_page("tasks")
-    project_changed()
-    show_status("任务建议已加入项目，可以生成排程方案")
-}
-fn reject_proposals() {
-    if busy { return }
-    app_state.proposals = []
-    app_state.agent = nil
-    editing_proposal = nil
-    ui.proposal_form.set_visible(false)
-    save_state()
-    ui.plan_panel.render()
-    show_status("任务建议已拒绝，项目任务保持原有内容")
-}
-fn cancel_planning() {
-    if busy { return }
-    app_state.agent = nil
-    app_state.plan = nil
-    trace_rows = []
-    save_state()
-    ui.plan_panel.render()
-    show_status("本轮规划已取消")
 }
 fn read_record(slot) {
     if !fs.exists(slot) { return nil }
     let body = fs.read(slot).parse_json()
-    if !has_field(body, "payload") { return nil }
-    if !has_field(body, "mirror") { return nil }
-    if !has_field(body, "sequence") { return nil }
-    if body.payload != body.mirror { return nil }
-    let restored = body.payload.parse_json()
-    if !has_field(restored, "schema") { return nil }
-    if restored.schema != 2 { return nil }
-    if !has_field(restored, "project") { return nil }
-    if !has_field(restored.project, "tasks") { return nil }
-    if restored.sequence != body.sequence { return nil }
-    return restored
+    assert(body.payload == body.mirror)
+    let record = body.payload.parse_json()
+    assert(record.schema == 3 and record.sequence == body.sequence)
+    return record
 }
 fn newest_record() {
-    let first = read_record("snap-a.json")
-    let second = read_record("snap-b.json")
-    if first == nil { return second }
-    if second == nil { return first }
+    let first = read_record("calendar-a.json"); let second = read_record("calendar-b.json")
+    if first == nil { return second }; if second == nil { return first }
     return if first.sequence >= second.sequence { first } else { second }
 }
 fn save_state() {
-    let disk = newest_record()
-    assert(disk == nil or disk.sequence == app_state.sequence)
-    let next = clone_value(app_state)
-    next.project = clone_value(project)
-    next.sequence = app_state.sequence + 1
-    let first = read_record("snap-a.json")
-    let second = read_record("snap-b.json")
-    let target = if first == nil { "snap-a.json" }
-                 elif second == nil { "snap-b.json" }
-                 elif first.sequence <= second.sequence { "snap-a.json" }
-                 else { "snap-b.json" }
+    let disk = newest_record(); assert(disk == nil or disk.sequence == app_state.sequence)
+    let next = clone_value(app_state); next.project = clone_value(project); next.sequence = next.sequence + 1
+    let slot = if next.sequence % 2 == 1 { "calendar-a.json" } else { "calendar-b.json" }
     let payload = next.to_json()
-    let body = {sequence: next.sequence, payload: payload, mirror: payload}
-    let result = fs.write(target, body.to_json())
-    if result != nil { show_status("保存失败：" + result); assert(false) }
-    assert(result == nil)
-    let saved = read_record(target)
-    assert(saved != nil)
-    assert(saved.sequence == next.sequence)
-    assert(saved.to_json() == next.to_json())
-    app_state = saved
-    project = app_state.project
+    assert(fs.write(slot, {sequence: next.sequence, payload: payload, mirror: payload}.to_json()) == nil)
+    let saved = read_record(slot)
+    assert(saved == next)
+    app_state = saved; project = app_state.project
 }
-fn project_changed() {
-    project.version = project.version + 1
-    app_state.plan = nil
-    app_state.receipt = nil
-    app_state.pendingVerification = nil
-    app_state.capacity = nil
-    if app_state.agent != nil {
-        if app_state.agent.status != "clarified" { app_state.agent = nil; trace_rows = [] }
-    }
-    save_state()
-    if page == "plan" { ui.plan_panel.render() }
-    if page == "calendar" { ui.calendar_panel.render() }
+fn show_status(text) { status_text = text; ui.status_label.set_text(text); ui.status_label.set_visible(true) }
+fn refresh_actions() { ui.generate_action.render(); ui.revision_action.render() }
+fn refresh() {
+    displayed = if app_state.plan != nil and !app_state.showingFormal { plan_project(app_state.draftProject, app_state.plan) } else { project }
+    ui.goal_form.set_visible(editing_goal)
+    ui.goal_summary.set_visible(!editing_goal)
+    ui.goal_summary.render(); ui.page_heading.render()
+    ui.view_banner.set_visible(app_state.plan != nil and project.tasks.len() > 0); ui.view_banner.render()
+    ui.month_header.render(); ui.calendar_grid.render(); ui.calendar_legend.render()
+    ui.day_detail.render(); ui.plan_summary.render(); ui.risk_panel.render()
+    ui.modification.set_visible(!editing_goal and (app_state.plan != nil or project.tasks.len() > 0 or app_state.phase == "clarify"))
+    refresh_actions()
 }
-fn dependency_cycle(value, identifier, path) {
-    if contains_value(path, identifier) { return true }
-    let route = clone_value(path)
-    route.push(identifier)
-    let task = task_by_id(value, identifier)
-    if task == nil { return false }
-    for dependency in task.dependsOn {
-        if dependency_cycle(value, dependency, route) { return true }
-    }
-    return false
+fn input_changed() {
+    if !loaded { return }
+    app_state.inputGoal = ui.goal_input.text(); app_state.inputDeadline = ui.deadline_input.text()
+    save_state(); ui.generate_action.render()
 }
-fn open_task_editor(identifier) {
-    if busy { return }
-    let task = task_by_id(project, identifier)
-    assert(task != nil)
-    editing_task = identifier
-    ui.edit_task_title.set_text(task.title)
-    ui.edit_task_hours.set_text("" + task.remainingHours)
-    ui.edit_task_priority.set_text("" + task.priority)
-    let dependencies = ""
-    for dependency in task.dependsOn {
-        dependencies = dependencies + (if dependencies == "" { "" } else { "," }) + dependency
-    }
-    ui.edit_task_dependencies.set_text(dependencies)
-    ui.editor_label.set_text("编辑任务：" + identifier)
-    show_status("正在编辑任务 " + identifier)
+fn advice_changed(text) {
+    if !loaded { return }; app_state.inputAdvice = text; save_state(); ui.revision_action.render()
 }
-fn save_task_edit() {
-    if busy { return }
-    if editing_task == nil { show_status("请先选择需要编辑的任务"); return }
-    let title = ui.edit_task_title.text().trim()
-    let hours = ui.edit_task_hours.text().trim().to_f64()
-    let priority = ui.edit_task_priority.text().trim().to_f64()
-    if title == "" { show_status("任务标题不能为空"); return }
-    if !(hours >= 0 and hours <= 720) { show_status("剩余工时需要填写 0 至 720"); return }
-    if !(priority >= 1 and priority <= 5 and floor(priority) == priority) {
-        show_status("优先级需要填写 1 至 5 的整数"); return
-    }
-    let dependencies = []
-    let entered = ui.edit_task_dependencies.text().trim()
-    if entered != "" {
-        for raw in entered.split(",") {
-            let identifier = raw.trim()
-            if identifier == editing_task or task_by_id(project, identifier) == nil {
-                show_status("依赖编号不存在或引用了任务自身：" + identifier); return
+fn select_day(epoch) { app_state.selectedDay = epoch; save_state(); ui.calendar_grid.render(); ui.day_detail.render() }
+fn change_month(direction) {
+    app_state.month = if direction < 0 { previous_month(app_state.month) } else { next_month(app_state.month) }
+    app_state.selectedDay = app_state.month
+    save_state(); ui.month_header.render(); ui.calendar_grid.render(); ui.day_detail.render()
+}
+fn select_today() {
+    app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch()
+    save_state(); ui.month_header.render(); ui.calendar_grid.render(); ui.day_detail.render()
+}
+fn day_items(epoch) {
+    let rows = []; let day = date_text(epoch)
+    for task in displayed.tasks {
+        for block in task.blocks {
+            if block.start.split("T")[0] == day {
+                assert(has_field(app_state.calendar, block.start) and has_field(app_state.calendar, block.end))
+                rows.push({title: task.title, start: app_state.calendar[block.start], end: app_state.calendar[block.end],
+                    taskId: task.id, fixed: block.done or app_state.calendar[block.start] < now_epoch(), done: block.done, blockId: block.id})
             }
-            if contains_value(dependencies, identifier) { show_status("依赖编号重复：" + identifier); return }
-            dependencies.push(identifier)
         }
     }
-    let updated = clone_value(project)
-    let task = task_by_id(updated, editing_task)
-    task.title = title
-    task.remainingHours = hours
-    task.priority = priority
-    task.done = hours == 0
-    task.dependsOn = dependencies
-    if dependency_cycle(updated, editing_task, []) { show_status("任务依赖形成循环，无法保存"); return }
-    project = updated
-    project_changed()
-    app_state.history.push({type: "progress", taskId: editing_task, version: project.version, time: current_iso()})
-    save_state()
-    ui.task_list.render()
-    show_status("任务进度已保存，剩余 " + hours + " 小时；请重新规划")
-}
-fn toggle_adjustable(identifier) {
-    if busy { return }
-    let task = task_by_id(project, identifier)
-    task.adjustable = !task.adjustable
-    project_changed()
-    ui.task_list.render()
-    show_status("任务自动调整权限已保存")
-}
-fn delete_task(identifier) {
-    if busy { return }
-    for task in project.tasks {
-        if contains_value(task.dependsOn, identifier) {
-            show_status("任务 " + task.id + " 依赖此任务，无法删除"); return
+    for event in displayed.fixedEvents {
+        if event.start.split("T")[0] == day {
+            rows.push({title: event.title, start: app_state.calendar[event.start], end: app_state.calendar[event.end], taskId: nil, fixed: true, done: false, blockId: event.id})
         }
     }
-    let task = task_by_id(project, identifier)
-    for block in task.blocks {
-        if block.done or calendar[block.start] < time_now() + app_state.utcOffset * 3600 {
-            show_status("此任务含已经开始或完成的工作，无法删除"); return
+    for index in rows.len() {
+        let position = index
+        while position > 0 and rows[position].start < rows[position - 1].start {
+            let prior = rows[position - 1]; rows[position - 1] = rows[position]; rows[position] = prior; position = position - 1
         }
     }
-    let kept = []
-    for task in project.tasks { if task.id != identifier { kept.push(task) } }
-    project.tasks = kept
-    editing_task = nil
-    project_changed()
-    ui.task_list.render()
-    show_status("任务已删除：" + identifier)
+    return rows
 }
-fn complete_block(identifier) {
-    if busy { return }
-    let block = block_by_id(project, identifier)
-    assert(block != nil)
-    if block.done { return }
-    block.done = true
-    project_changed()
-    app_state.history.push({type: "block_complete", blockId: identifier, version: project.version, time: current_iso()})
-    save_state()
-    ui.calendar_panel.render()
-    show_status("时间块已标记完成；请明确更新任务剩余工时")
+fn total_hours(value) { let hours = 0; for task in value.tasks { if !task.done { hours = hours + task.remainingHours } }; return hours }
+fn short_deadline(value) {
+    if value.deadline == nil { return "" }
+    let parts = local_time(app_state.calendar[value.deadline])
+    return padded(parts.month) + "/" + padded(parts.day)
 }
-fn toggle_rest_day(day) {
-    if busy { return }
-    let days = []
-    let exists = contains_value(project.restDays, day)
-    for value in project.restDays { if value != day { days.push(value) } }
-    if !exists { days.push(day) }
-    if days.len() == 7 { show_status("至少需要保留一个工作日"); return }
-    project.restDays = days
-    project_changed()
-    ui.project_details.render()
-    show_status("休息日已保存")
+fn latest_end(value) {
+    let end = 0; for task in value.tasks { for block in task.blocks { end = max(end, app_state.calendar[block.end]) } }; return end
 }
-fn toggle_automatic() {
-    if busy { return }
-    project.autoAdjust = !project.autoAdjust
-    project_changed()
-    ui.project_details.render()
-    show_status("项目自动调整权限已保存")
-}
-fn add_fixed_event() {
-    if busy { return }
-    let title = ui.fixed_title.text().trim()
-    let day = ui.fixed_day.text().trim().to_f64()
-    let start = ui.fixed_start.text().trim().to_f64()
-    let end = ui.fixed_end.text().trim().to_f64()
-    if title == "" { show_status("请输入固定日程标题"); return }
-    if !(day >= 0 and day <= 90 and floor(day) == day and start >= 0 and
-         end <= 23 and start < end and floor(start) == start and floor(end) == end) {
-        show_status("固定日程需要填写 0 至 90 的天数以及有效的整点时间"); return
+fn capacity_info() {
+    let value = if app_state.showingFormal { app_state.formalCapacity } else { app_state.capacity }
+    if value == nil {
+        return {title: "你的工作日", text: "周一至周五 09:00–18:00，周末休息。生成计划时会检查工时与依赖。", risks: [], warning: false}
     }
-    let today = floor((time_now() + app_state.utcOffset * 3600) / 86400) * 86400
-    let left = today + day * 86400 + start * 3600
-    let right = today + day * 86400 + end * 3600
-    let identifier = "fixed-" + app_state.sequence
-    project.fixedEvents.push({id: identifier, title: title, start: calendar_iso(left), end: calendar_iso(right)})
-    calendar[calendar_iso(left)] = left
-    calendar[calendar_iso(right)] = right
-    app_state.calendar = calendar
-    project_changed()
-    ui.project_details.render()
-    show_status("固定日程已保存：" + title)
+    let risks = []
+    if value.gapHours > 0 { risks.push("缺少 " + value.gapHours + " 小时，请编辑截止日期或提出修改建议。") }
+    if app_state.plan != nil and !app_state.showingFormal { for entry in app_state.plan.risks { risks.push(entry) } }
+    elif has_field(app_state, "confirmedRisks") { for entry in app_state.confirmedRisks { risks.push(entry) } }
+    return {title: if risks.len() > 0 { "截止日期需要关注" } else { "工作时间与期限" },
+        text: "剩余工作 " + value.remainingHours + " 小时，期限内可用 " + (round(value.availableHours * 10) / 10) + " 小时。",
+        risks: risks, warning: risks.len() > 0}
 }
-fn delete_fixed_event(identifier) {
-    if busy { return }
-    let kept = []
-    for event in project.fixedEvents { if event.id != identifier { kept.push(event) } }
-    project.fixedEvents = kept
-    project_changed()
-    ui.project_details.render()
-    show_status("固定日程已删除")
-}
-fn add_milestone() {
-    if busy { return }
-    let title = ui.milestone_title.text().trim()
-    let day = ui.milestone_day.text().trim().to_f64()
-    let hour = ui.milestone_hour.text().trim().to_f64()
-    if title == "" or !(day >= 0 and day <= 90 and day == floor(day) and hour >= 0 and hour <= 23 and hour == floor(hour)) {
-        show_status("里程碑需要标题、0 至 90 的天数和有效整点时间"); return
-    }
-    let ids = []
-    let input = ui.milestone_tasks.text().trim()
-    if input != "" {
-        for value in input.split(",") {
-            let identifier = value.trim()
-            if task_by_id(project, identifier) == nil or contains_value(ids, identifier) {
-                show_status("里程碑任务编号不存在或重复：" + identifier); return
-            }
-            ids.push(identifier)
+fn request_api(path, body) {
+    let pending = promise(); let finished = false
+    let timer = start_timeout(660, || {
+        if !finished { finished = true; pending.resolve({failed: "服务请求超过等待时间", response: nil}) }
+    })
+    net.http_request(net.HttpRequest{
+        url: api_origin + path method: if body == nil { net.HttpMethod.GET } else { net.HttpMethod.POST }
+        headers: {"Content-Type": "application/json"} body: if body == nil { nil } else { body.to_json().to_bytes() }
+    }) do net.HttpEvents{
+        on_response: |response| {
+            println("Loom HTTP " + path + " " + response.status_code)
+            if !finished { finished = true; stop_timer(timer); pending.resolve({failed: "", response: response}) }
         }
+        on_error: |error| { if !finished { finished = true; stop_timer(timer); pending.resolve({failed: error.message, response: nil}) } }
     }
-    let current = time_now() + app_state.utcOffset * 3600
-    let parts = local_time(current)
-    let due_epoch = floor(current / 86400) * 86400 + day * 86400 + hour * 3600
-    let due = calendar_iso(due_epoch)
-    calendar[due] = due_epoch
-    app_state.calendar = calendar
-    project.milestones.push({id: "milestone-" + app_state.sequence, title: title, due: due, taskIds: ids})
-    project_changed()
-    ui.project_details.render()
-    show_status("里程碑已保存：" + title)
+    return pending
 }
-fn delete_milestone(identifier) {
-    if busy { return }
-    let kept = []
-    for item in project.milestones { if item.id != identifier { kept.push(item) } }
-    project.milestones = kept
-    project_changed()
-    ui.project_details.render()
-    show_status("里程碑已删除")
+fn request_error(outcome) {
+    if outcome.failed != "" { return outcome.failed }
+    if outcome.response.status_code >= 400 {
+        let raw = outcome.response.body.to_string().trim()
+        let message = "服务请求失败（HTTP " + outcome.response.status_code + "）"
+        if raw.search("{") == 0 {
+            let body = raw.parse_json()
+            if has_field(body, "detail") { message = message + "：" + body.detail }
+        }
+        return message
+    }
+    return ""
 }
-fn save_project_settings() {
-    if busy { return }
-    let goal_text = ui.goal_input.text().trim()
-    let days = ui.deadline_days.text().trim().to_f64()
-    let start_hour = ui.work_start.text().trim().to_f64()
-    let end_hour = ui.work_end.text().trim().to_f64()
-    let offset = ui.offset_input.text().trim().to_f64()
-    if goal_text == "" { show_status("请输入项目目标"); return }
-    if !(days >= 1 and days <= 90 and floor(days) == days) {
-        show_status("截止天数需要填写 1 至 90 的整数"); return
-    }
-    if !(start_hour >= 0 and end_hour <= 23 and start_hour < end_hour and
-            floor(start_hour) == start_hour and floor(end_hour) == end_hour) {
-        show_status("工作时间需要填写 0 至 23 的整数，结束晚于开始"); return
-    }
-    if !(offset >= -12 and offset <= 14) {
-        show_status("UTC 偏移需要填写 -12 至 14 的小时数"); return
-    }
-    app_state.deadlineDays = days
-    app_state.workStart = start_hour
-    app_state.workEnd = end_hour
-    app_state.utcOffset = offset
-    project.goal = goal_text
-    project.deadline = calendar_iso(time_now() + offset * 3600 + days * 86400)
-    project.workHours = {start: padded(start_hour) + ":00", end: padded(end_hour) + ":00"}
-    project.preferences = ui.preferences_input.text().trim()
-    project_changed()
-    ui.project_details.render()
-    show_status("项目已保存，版本 " + project.version)
+fn planning_failed(reason) {
+    busy = false; app_state.activeJob = nil; app_state.phase = "failed"; app_state.error = reason
+    save_state(); show_status("本次规划已停止：" + reason); refresh()
 }
-fn add_task() {
+fn poll_planning() {
+    let started = time_now()
+    loop {
+        let outcome = request_api("/v1/agent/jobs/" + app_state.activeJob, nil).await()
+        let error = request_error(outcome)
+        if error != "" { planning_failed(error); return }
+        let response = outcome.response.body.to_string().parse_json()
+        if response.status == "complete" {
+            busy = false; app_state.activeJob = nil
+            let result = response.result
+            app_state.agent = result.state; app_state.capacity = result.capacity
+            if result.type == "plan" {
+                app_state.plan = result.payload; app_state.draftProject = result.draftProject
+                for key value in result.calendar { app_state.calendar["" + key] = value }
+                app_state.phase = "candidate"; app_state.showingFormal = false; app_state.pendingVerification = nil
+                app_state.error = ""; app_state.inputAdvice = ""; ui.advice_input.set_text("")
+                show_status("候选计划已生成，请查看日历并确认")
+            } elif result.type == "clarify" {
+                app_state.phase = "clarify"; app_state.workingProject = result.draftProject
+                show_status(result.payload.question)
+            } else { planning_failed(result.payload.reason); return }
+            editing_goal = false; save_state(); refresh(); return
+        }
+        assert(response.status == "running")
+        progress_text = response.stage; show_status(progress_text); ui.plan_summary.render()
+        if time_now() - started > 650 { planning_failed("规划超过等待时间"); return }
+    }
+}
+fn launch_request(request) {
+    busy = true; app_state.lastRequest = clone_value(request)
+    app_state.phase = if request.trigger == "compose" { "generating" } else { "revising" }
+    app_state.error = ""; progress_text = if request.trigger == "compose" { "正在拆分目标" } else { "正在根据建议调整任务和时间" }
+    editing_goal = false; save_state(); show_status(progress_text); refresh()
+    let outcome = request_api("/v1/agent/jobs", request).await()
+    let error = request_error(outcome); if error != "" { planning_failed(error); return }
+    let response = outcome.response.body.to_string().parse_json()
+    app_state.activeJob = response.jobId; save_state(); poll_planning()
+}
+fn generate_plan() {
     if busy { return }
-    let title = ui.task_title.text().trim()
-    let hours = ui.task_hours.text().trim().to_f64()
-    if title == "" { show_status("请输入任务标题"); return }
-    if !(hours > 0 and hours <= 720) {
-        show_status("剩余工时需要大于 0 且不超过 720"); return
+    let goal = ui.goal_input.text().trim(); let due = deadline_epoch(ui.deadline_input.text().trim())
+    if goal == "" { show_status("请填写你的目标"); return }
+    if due == nil or due <= now_epoch() { show_status("请填写未来一年内有效的截止日期，格式为 YYYY-MM-DD"); return }
+    let snapshot = clone_value(project); snapshot.goal = goal; snapshot.deadline = calendar_iso(due)
+    app_state.calendar[snapshot.deadline] = due
+    launch_request({snapshot: snapshot, trigger: "compose", instruction: "", now: current_iso()})
+}
+fn revise_plan() {
+    if busy { return }
+    let advice = ui.advice_input.text().trim(); if advice == "" { return }
+    if app_state.phase == "clarify" {
+        launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "", state: app_state.agent,
+            clarificationAnswer: advice, now: current_iso()}); return
     }
-    let task_id = "task-" + app_state.nextTask
-    while task_by_id(project, task_id) != nil {
-        app_state.nextTask = app_state.nextTask + 1
-        task_id = "task-" + app_state.nextTask
+    let snapshot = if app_state.plan != nil { plan_project(app_state.draftProject, app_state.plan) } else { clone_value(project) }
+    snapshot.version = project.version
+    snapshot.preferences = snapshot.preferences + "\n用户修改建议：" + advice
+    launch_request({snapshot: snapshot, trigger: "revise", instruction: advice, now: current_iso()})
+}
+fn retry_planning() {
+    if busy or app_state.lastRequest == nil { return }
+    let request = clone_value(app_state.lastRequest); request.now = current_iso(); launch_request(request)
+}
+fn edit_goal() {
+    if busy { return }
+    let value = if app_state.draftProject != nil { app_state.draftProject } else { project }
+    ui.goal_input.set_text(value.goal)
+    ui.deadline_input.set_text(if value.deadline == nil { date_text(today_epoch() + 7 * 86400) } else { value.deadline.split("T")[0] })
+    editing_goal = true; input_changed(); refresh()
+}
+fn toggle_view() {
+    app_state.showingFormal = !app_state.showingFormal; save_state(); refresh()
+}
+fn verify_pending() {
+    if busy or app_state.pendingVerification == nil { return }
+    busy = true; app_state.phase = "verifying"; save_state(); show_status("正在保存并核验完整日历"); refresh()
+    let readback = newest_record(); assert(readback != nil)
+    let pending = readback.pendingVerification
+    let outcome = request_api("/v1/calendar/verify", {beforeSnapshot: pending.before, draftProject: pending.draft,
+        plan: pending.plan, readbackSnapshot: pending.target, now: current_iso()}).await()
+    let error = request_error(outcome)
+    busy = false
+    if error != "" {
+        app_state.phase = "confirm_failed"; app_state.error = error
+        save_state(); show_status("确认核验失败：" + error); refresh(); return
     }
-    app_state.nextTask = app_state.nextTask + 1
-    project.tasks.push({id: task_id, title: title, priority: 2,
-        remainingHours: hours, done: false, dependsOn: [], adjustable: false, blocks: []})
-    project_changed()
-    ui.task_title.set_text("")
-    ui.task_list.render()
-    show_status("任务已保存：" + title)
+    let receipt = outcome.response.body.to_string().parse_json()
+    if receipt.status != "verified" {
+        app_state.phase = "confirm_failed"; app_state.error = receipt.reason
+        save_state(); show_status("计划尚未确认：" + receipt.reason); refresh(); return
+    }
+    project = clone_value(pending.target); app_state.project = project; app_state.receipt = receipt
+    app_state.savedAt = current_iso(); app_state.confirmedRationale = pending.plan.rationale
+    app_state.formalCapacity = clone_value(app_state.capacity)
+    app_state.confirmedRisks = pending.plan.risks; app_state.pendingVerification = nil
+    app_state.plan = nil; app_state.draftProject = nil; app_state.phase = "confirmed"; app_state.error = ""
+    app_state.showingFormal = false; save_state()
+    assert(newest_record().project == project)
+    show_status("计划已确认，日历已保存并通过核验"); refresh()
+}
+fn confirm_plan() {
+    if busy or app_state.plan == nil { return }
+    assert(app_state.plan.baseVersion == project.version)
+    app_state.pendingVerification = {before: clone_value(project), draft: clone_value(app_state.draftProject),
+        plan: clone_value(app_state.plan), target: plan_project(app_state.draftProject, app_state.plan), now: current_iso()}
+    save_state(); verify_pending()
 }
 fn boot() {
+    let device = fs.read("device.json").parse_json()
     let restored = newest_record()
-    if restored != nil {
-        app_state = restored
-        project = app_state.project
-        show_status("已恢复本地项目，版本 " + project.version)
-    } elif fs.exists("snap-a.json") or fs.exists("snap-b.json") {
-        show_status("本地快照损坏，无法恢复项目")
-        assert(false)
-    }
-    if !has_field(app_state, "proposals") { app_state.proposals = [] }
-    ui.goal_input.set_text(project.goal)
-    ui.deadline_days.set_text("" + app_state.deadlineDays)
-    ui.work_start.set_text("" + app_state.workStart)
-    ui.work_end.set_text("" + app_state.workEnd)
-    ui.offset_input.set_text("" + app_state.utcOffset)
-    ui.preferences_input.set_text(project.preferences)
-    ui.project_details.render()
-    ui.task_list.render()
-    if app_state.agent != nil { trace_rows = app_state.agent.trace }
-    if has_field(app_state, "calendar") { calendar = app_state.calendar }
-    select_page("settings")
-    if has_field(app_state, "pendingVerification") {
-        if app_state.pendingVerification != nil { show_status("日历已保存，等待重新核验；请打开日历") }
-    }
+    if restored != nil { app_state = restored; project = app_state.project }
+    app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
+    if app_state.month == 0 { app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch() }
+    if app_state.inputDeadline == "" { app_state.inputDeadline = date_text(today_epoch() + 7 * 86400) }
+    ui.goal_input.set_text(app_state.inputGoal); ui.deadline_input.set_text(app_state.inputDeadline)
+    ui.advice_input.set_text(app_state.inputAdvice)
+    ui.timezone_label.set_text("设备时区 · " + app_state.timezone)
+    loaded = true; editing_goal = project.goal == "" and app_state.draftProject == nil and app_state.lastRequest == nil
+    if restored != nil { show_status(if app_state.plan != nil { "已恢复候选计划与正式日历" } else { "已恢复本地日历" }) }
+    if app_state.pendingVerification != nil { app_state.phase = "confirm_failed"; show_status("候选计划已经保存，请重新确认核验") }
+    save_state(); refresh()
+    if app_state.activeJob != nil { busy = true; progress_text = "正在恢复规划过程"; refresh(); poll_planning() }
+    elif app_state.phase == "generating" or app_state.phase == "revising" { planning_failed("规划请求尚未提交，请重新生成") }
 }
 
 start_timeout(0.05, || boot())
 
-SolidView{width: Fill height: Fill flow: Down padding: 16 spacing: 10 draw_bg.color: #xf8fafc
-    Label{text: "Loom · 项目经理日历" draw_text.color: ink draw_text.text_style: theme.font_bold{font_size: 23}}
-    status_label := Label{width: Fill text: status_text draw_text.color: #x1d4ed8 draw_text.text_style.font_size: 13}
-    View{width: Fill height: Fit flow: Right spacing: 4
-        Action{text: "项目" on_click: || select_page("settings")}
-        Action{text: "任务" on_click: || select_page("tasks")}
-        Action{text: "日历" on_click: || select_page("calendar")}
-        Action{text: "方案" on_click: || select_page("plan")}
-        Action{text: "过程" on_click: || select_page("trace")}
+SolidView{width: Fill height: Fill flow: Down draw_bg.color: #xf5f7f6
+    SolidView{width: Fill height: 72 flow: Right padding: Inset{left: 40 right: 40} spacing: 16 align: Align{y: 0.5} draw_bg.color: #xffffff
+        RoundedView{width: 36 height: 36 align: Align{x: 0.5 y: 0.5} draw_bg +: {color: brand border_radius: 8}
+            Text{text: "L" draw_text +: {color: #xffffff text_style: english{font_size: 17.25}}}
+        }
+        Text{text: "Loom" draw_text.text_style: english}
+        Text{text: "目标与日历" draw_text.color: muted}
+        View{width: Fill height: 1}
+        timezone_label := Small{text: "设备时区"}
+        RoundedView{width: Fit height: 28 padding: Inset{left: 12 right: 12} align: Align{y: 0.5} draw_bg +: {color: brand_soft border_radius: 8}
+            Small{text: "本地日历" draw_text.color: brand}
+        }
     }
-    main_scroll := ScrollYView{width: Fill height: Fill flow: Down spacing: 10
-        settings := RoundedView{width: Fill height: Fit flow: Down padding: 12 spacing: 8 draw_bg.color: #xffffff
-            Label{text: "项目目标" draw_text.color: ink}
-            goal_input := Input{empty_text: "例如：完成产品原型与演示"}
-            View{width: Fill height: Fit flow: Right spacing: 8 align: Align{y: 0.5}
-                Label{text: "截止天数" draw_text.color: ink}
-                deadline_days := Input{width: 70 text: "7"}
-                Label{text: "UTC 偏移" draw_text.color: ink}
-                offset_input := Input{width: 70 text: "0"}
-            }
-            View{width: Fill height: Fit flow: Right spacing: 8 align: Align{y: 0.5}
-                Label{text: "工作时间" draw_text.color: ink}
-                work_start := Input{width: 70 text: "9"}
-                Label{text: "至" draw_text.color: ink}
-                work_end := Input{width: 70 text: "18"}
-            }
-            Label{text: "偏好" draw_text.color: ink}
-            preferences_input := Input{empty_text: "例如：上午安排需要专注的工作"}
-            Action{text: "保存项目" on_click: || save_project_settings()}
-            project_details := View{width: Fill height: Fit flow: Down on_render: || {
-                if project.deadline != nil {
-                    Label{width: Fill text: "截止时间：" + project.deadline draw_text.color: muted}
-                }
-                let weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-                for row in 2 {
-                    View{width: Fill height: Fit flow: Right spacing: 3
-                        for col in 4 {
-                            let i = row * 4 + col
-                            if i < 7 {
-                                Action{text: weekdays[i] + (if contains_value(project.restDays, i) { "休息" } else { "工作" }) on_click: || toggle_rest_day(i)}
-                            }
+    ScrollXYView{width: Fill height: Fill flow: Down
+        View{width: 1440 height: Fit flow: Down padding: Inset{left: 40 right: 40 top: 28 bottom: 32} spacing: 24
+            page_heading := View{width: Fill height: 44 flow: Right align: Align{y: 0.5} on_render: || {
+                Heading{text: if displayed.goal == "" { "把目标安排进每一天" } else { "你的月历" } draw_text.text_style.font_size: 21}
+                View{width: Fill height: 1}
+                Text{text: "今天 · " + date_text(today_epoch()) draw_text.color: muted}
+            }}
+            Card{spacing: 8
+                goal_form := View{width: Fill height: Fit flow: Down spacing: 8
+                    View{width: Fill height: 76 flow: Right spacing: 24 align: Align{y: 1}
+                        View{width: Fill height: Fit flow: Down spacing: 8
+                            Text{text: "你的目标"}
+                            goal_input := Input{empty_text: "例如：完成 Loom 的演示与使用文档" on_change: |text| input_changed()}
                         }
+                        View{width: 220 height: Fit flow: Down spacing: 8
+                            Text{text: "截止日期"}
+                            deadline_input := Input{empty_text: "YYYY-MM-DD" on_change: |text| input_changed()}
+                        }
+                        generate_action := View{width: 140 height: 40 on_render: || {
+                            Action{width: Fill text: "生成计划" enabled: loaded and !busy and app_state.inputGoal.trim() != ""
+                                on_click: || generate_plan()}
+                        }}
                     }
+                    Small{text: "截止日期默认为七天后 · 工作时间：周一至周五 09:00–18:00"}
                 }
-                Action{text: if project.autoAdjust { "关闭项目自动调整" } else { "开启项目自动调整" } on_click: || toggle_automatic()}
-                for event in project.fixedEvents {
-                    Label{width: Fill text: event.title + "：" + event.start + " 至 " + event.end draw_text.color: ink}
-                    Action{text: "删除日程 " + event.id on_click: || delete_fixed_event(event.id)}
-                }
-                for item in project.milestones {
-                    Label{width: Fill text: "里程碑：" + item.title + " · " + item.due + " · 任务 " + item.taskIds.to_json() draw_text.color: ink}
-                    Action{text: "删除里程碑 " + item.id on_click: || delete_milestone(item.id)}
+                goal_summary := View{width: Fill height: Fit flow: Right spacing: 24 visible: false align: Align{y: 0.5} on_render: || {
+                    let value = if app_state.showingFormal { project } elif app_state.draftProject != nil { app_state.draftProject } elif app_state.lastRequest != nil and project.goal == "" { app_state.lastRequest.snapshot } else { project }
+                    View{width: Fill height: Fit flow: Down spacing: 6
+                        Heading{width: Fill text: value.goal}
+                        Small{text: (if value.deadline == nil { "" } else { "截止日期 · " + value.deadline.split("T")[0] + " 18:00    " }) + "周一至周五 09:00–18:00"}
+                    }
+                    Subtle{text: "编辑目标" enabled: !busy on_click: || edit_goal()}
+                }}
+                status_label := Small{width: Fill max_lines: 2 text_overflow: mod.text.TextOverflow.Ellipsis text: status_text visible: false}
+            }
+            view_banner := View{width: Fill height: Fit flow: Down on_render: || {
+                if app_state.plan != nil and project.tasks.len() > 0 {
+                    RoundedView{width: Fill height: 44 flow: Right padding: Inset{left: 16 right: 8} align: Align{y: 0.5} draw_bg +: {color: purple_soft border_radius: 8}
+                        Text{text: if app_state.showingFormal { "正在查看已确认计划" } else { "正在查看候选计划 · 正式安排已保留" } draw_text.color: purple}
+                        View{width: Fill height: 1}
+                        Subtle{text: if app_state.showingFormal { "查看候选计划" } else { "查看已确认计划" } on_click: || toggle_view()}
+                    }
                 }
             }}
-            Label{text: "固定日程" draw_text.color: ink}
-            fixed_title := Input{empty_text: "例如：团队会议"}
-            View{width: Fill height: Fit flow: Right spacing: 6
-                Label{text: "距今天数" draw_text.color: muted}
-                fixed_day := Input{width: 55 text: "1"}
-                fixed_start := Input{width: 55 text: "13"}
-                Label{text: "至" draw_text.color: muted}
-                fixed_end := Input{width: 55 text: "14"}
-            }
-            Action{text: "添加固定日程" on_click: || add_fixed_event()}
-            Label{text: "里程碑" draw_text.color: ink}
-            milestone_title := Input{empty_text: "例如：提交初赛成果"}
-            View{width: Fill height: Fit flow: Right spacing: 6
-                Label{text: "距今天数" draw_text.color: muted}
-                milestone_day := Input{width: 55 text: "7"}
-                Label{text: "小时" draw_text.color: muted}
-                milestone_hour := Input{width: 55 text: "18"}
-            }
-            milestone_tasks := Input{empty_text: "任务编号，用英文逗号分隔；留空涵盖全部任务"}
-            Action{text: "添加里程碑" on_click: || add_milestone()}
-        }
-        planning := View{width: Fill height: Fit flow: Down spacing: 6 visible: false
-            Action{text: "根据目标生成任务建议" on_click: || start_planning("propose")}
-            Action{text: "生成排程方案" on_click: || start_planning("new")}
-            Action{text: "根据当前进度重新规划" on_click: || start_planning("progress")}
-            Action{text: "处理当前延误" on_click: || start_planning("delay")}
-            proposal_form := RoundedView{width: Fill height: Fit flow: Down padding: 10 spacing: 6 visible: false draw_bg.color: #xffffff
-                Label{text: "修改任务建议" draw_text.color: ink}
-                proposal_edit_title := Input{empty_text: "任务标题"}
-                View{width: Fill height: Fit flow: Right spacing: 6
-                    Label{text: "工时" draw_text.color: ink}
-                    proposal_edit_hours := Input{width: 55}
-                    Label{text: "优先级" draw_text.color: ink}
-                    proposal_edit_priority := Input{width: 55}
-                }
-                proposal_edit_dependencies := Input{empty_text: "依赖编号，用英文逗号分隔"}
-                Action{text: "保存建议修改" on_click: || save_proposal_edit()}
-            }
-        }
-        plan_panel := RoundedView{width: Fill height: Fit flow: Down padding: 12 spacing: 6 visible: false draw_bg.color: #xffffff on_render: || {
-            me.visible = page == "plan"
-            if has_field(app_state, "capacity") {
-                if app_state.capacity != nil {
-                    Label{width: Fill text: "待完成 " + app_state.capacity.remainingHours + " 小时；期限内可用 " + app_state.capacity.availableHours + " 小时；缺口 " + app_state.capacity.gapHours + " 小时" draw_text.color: ink}
-                }
-            }
-            if app_state.proposals.len() > 0 {
-                Label{width: Fill text: "任务建议：确认后加入项目" draw_text.color: ink}
-                Action{text: "确认全部任务建议" on_click: || accept_proposals()}
-                Action{text: "拒绝全部任务建议" on_click: || reject_proposals()}
-                for i in app_state.proposals.len() {
-                    let task = app_state.proposals[i]
-                    Label{width: Fill text: task.id + " · " + task.title + "，工时 " + task.remainingHours + "，优先级 " + task.priority draw_text.color: ink}
-                    Label{width: Fill text: "依赖编号：" + task.dependsOn.to_json() draw_text.color: muted}
-                    Action{text: "修改建议 " + task.id on_click: || open_proposal(i)}
-                }
-            }
-            if app_state.plan == nil {
-                Label{text: "尚无待批准方案" draw_text.color: muted}
-            }
-            if app_state.agent != nil {
-                if app_state.agent.status == "clarified" {
-                    Label{width: Fill text: "需要回答：" + app_state.agent.clarification draw_text.color: ink}
-                    answer_input := Input{empty_text: "请输入你的决定"}
-                    Action{text: "提交回答并继续" on_click: || start_planning("resume")}
-                    Action{text: "取消本轮规划" on_click: || cancel_planning()}
-                }
-            }
-            if app_state.plan != nil {
-                Action{text: "批准当前方案" on_click: || approve_plan()}
-                Label{width: Fill text: "安排理由：" + app_state.plan.rationale draw_text.color: ink}
-                for risk in app_state.plan.risks {
-                    Label{width: Fill text: "风险：" + risk draw_text.color: #xb45309}
-                }
-                for exception in app_state.plan.exceptions {
-                    Label{width: Fill text: "例外：" + exception draw_text.color: #xb45309}
-                }
-                for change in app_state.plan.changes {
-                    if change.before != nil {
-                        Label{width: Fill text: "移除 " + change.before.taskId + "：" + change.before.start + " 至 " + change.before.end draw_text.color: muted}
-                    }
-                    if change.after != nil {
-                        Label{width: Fill text: "安排 " + change.after.taskId + "：" + change.after.start + " 至 " + change.after.end draw_text.color: ink}
-                    }
-                }
-            }
-        }}
-        calendar_panel := View{width: Fill height: Fit flow: Down spacing: 8 visible: false on_render: || {
-            me.visible = page == "calendar"
-            if app_state.undo != nil {
-                Action{text: "撤销最近一次安排" on_click: || undo_calendar()}
-            }
-            if has_field(app_state, "pendingVerification") {
-                if app_state.pendingVerification != nil {
-                    Action{text: "重新核验保存结果" on_click: || { if !busy { verify_pending() } }}
-                }
-            }
-            if app_state.receipt != nil {
-                Label{width: Fill text: "核验状态：" + app_state.receipt.status draw_text.color: ink}
-            }
-            for task in project.tasks {
-                for block in task.blocks {
-                    RoundedView{width: Fill height: Fit flow: Down padding: 8 spacing: 4 draw_bg.color: #xffffff
-                        Label{width: Fill text: task.title + (if block.done { " · 已完成" } else { " · 待完成" }) draw_text.color: ink}
-                        Label{width: Fill text: block.start + " 至 " + block.end draw_text.color: muted}
-                        if !block.done {
-                            Action{text: "标记完成 " + block.id on_click: || complete_block(block.id)}
+            View{width: Fill height: Fit flow: Right spacing: 24
+                View{width: 1008 height: Fit flow: Down spacing: 16
+                    Card{padding: 0 spacing: 0
+                        month_header := View{width: Fill height: 64 flow: Right padding: Inset{left: 24 right: 24} spacing: 8 align: Align{y: 0.5} on_render: || {
+                            let parts = local_time(app_state.month)
+                            month_label := Heading{text: "" + parts.year + "年 " + parts.month + "月" draw_text.text_style.font_size: 18}
+                            View{width: Fill height: 1}
+                            Subtle{text: "上个月" on_click: || change_month(-1)}
+                            Subtle{text: "今天" on_click: || select_today()}
+                            Subtle{text: "下个月" on_click: || change_month(1)}
+                        }}
+                        View{width: Fill height: 32 flow: Right
+                            for day in ["周一", "周二", "周三", "周四", "周五", "周六", "周日"] {
+                                View{width: 144 height: 32 align: Align{x: 0.5 y: 0.5} Small{text: day}}
+                            }
                         }
+                        calendar_grid := View{width: Fill height: Fit flow: Down on_render: || {
+                            let lead = (local_time(app_state.month).weekday + 6) % 7
+                            let days = (next_month(app_state.month) - app_state.month) / 86400
+                            let rows = ceil((lead + days) / 7)
+                            for row in rows {
+                                View{width: Fill height: 120 flow: Right
+                                    for column in 7 {
+                                        let epoch = app_state.month + (row * 7 + column - lead) * 86400
+                                        let parts = local_time(epoch)
+                                        let outside = month_start(epoch) != app_state.month
+                                        let today = epoch == today_epoch()
+                                        let due = displayed.deadline != nil and date_text(epoch) == displayed.deadline.split("T")[0]
+                                        let selected = epoch == app_state.selectedDay
+                                        let rows = day_items(epoch)
+                                        GestureView{width: 144 height: 120 on_tap: |x, y| select_day(epoch)
+                                            RoundedView{width: Fill height: Fill flow: Down padding: Inset{left: 8 right: 8 top: 6 bottom: 6} spacing: 2
+                                                draw_bg +: {color: if selected { brand_soft } elif outside or column >= 5 { #xf5f7f6 } else { #xffffff }
+                                                    border_color: if today or selected { brand } elif due { gold } else { line } border_size: 1 border_radius: 0}
+                                                View{width: Fill height: 24 flow: Right spacing: 8 align: Align{y: 0.5}
+                                                    RoundedView{width: 24 height: 24 align: Align{x: 0.5 y: 0.5}
+                                                        draw_bg +: {color: if today { brand } elif due { gold_soft } else { #x00000000 } border_radius: 12}
+                                                        date_number := Small{text: padded(parts.day) draw_text +: {text_style: chinese_medium{font_size: 9} color: if today { #xffffff } elif due { gold } elif outside { faint } else { ink }}}
+                                                    }
+                                                    Small{text: if today { "今天" } elif due { "截止" } elif outside { "" + parts.month + "月" } else { "" } draw_text.text_style.font_size: 7.5}
+                                                }
+                                                for index in min(rows.len(), 2) {
+                                                    let item = rows[index]
+                                                    RoundedView{width: Fill height: 32 flow: Down padding: Inset{left: 4 right: 4 top: 2 bottom: 2}
+                                                        draw_bg +: {color: if item.fixed { #xeff2f1 } elif app_state.plan != nil and !app_state.showingFormal { purple_soft } else { brand_soft } border_radius: 8}
+                                                        Small{height: 12 text: clock_text(item.start) + "–" + clock_text(item.end) draw_text.text_style.font_size: 7.5
+                                                            draw_text.color: if item.fixed { fixed_ink } elif app_state.plan != nil and !app_state.showingFormal { purple } else { brand }}
+                                                        Small{width: Fill height: 16 max_lines: 1 text_overflow: mod.text.TextOverflow.Ellipsis text: item.title
+                                                            draw_text +: {text_style: chinese_medium{font_size: 9} color: if item.fixed { fixed_ink } elif app_state.plan != nil and !app_state.showingFormal { purple } else { brand }}}
+                                                    }
+                                                }
+                                                if rows.len() > 2 { Small{text: "还有 " + (rows.len() - 2) + " 项安排" draw_text.text_style.font_size: 7.5} }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }}
+                        calendar_legend := View{width: Fill height: 40 flow: Right padding: Inset{left: 24 right: 24} spacing: 24 align: Align{y: 0.5} on_render: || {
+                            Small{text: "● 已确认安排" draw_text.color: brand}
+                            if app_state.plan != nil { Small{text: "● 候选安排" draw_text.color: purple} }
+                            Small{text: "● 固定或已开始安排"}
+                            Small{text: "● 截止日期" draw_text.color: gold}
+                        }}
+                    }
+                    day_detail := Card{on_render: || {
+                        let parts = local_time(app_state.selectedDay); let rows = day_items(app_state.selectedDay); let hours = 0
+                        for item in rows { hours = hours + (item.end - item.start) / 3600 }
+                        View{width: Fill height: Fit flow: Right align: Align{y: 0.5}
+                            Heading{text: "" + parts.month + "月" + parts.day + "日 · " + ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][parts.weekday]}
+                            View{width: Fill height: 1}
+                            Small{text: "" + rows.len() + " 项安排 · " + hours + " 小时"}
+                        }
+                        if rows.len() == 0 { Text{text: "当天暂无安排，选择日期查看完整日程。" draw_text.color: muted} }
+                        for item in rows {
+                            View{width: Fill height: Fit flow: Right spacing: 16
+                                Text{width: 110 text: clock_text(item.start) + "–" + clock_text(item.end) draw_text.color: muted}
+                                View{width: Fill height: Fit flow: Down spacing: 4
+                                    Text{width: Fill text: item.title}
+                                    if item.taskId != nil {
+                                        let task = task_by_id(displayed, item.taskId)
+                                        let dependencies = ""
+                                        for identifier in task.dependsOn { dependencies = dependencies + (if dependencies == "" { "" } else { "、" }) + task_by_id(displayed, identifier).title }
+                                        if dependencies != "" { Small{width: Fill text: "依赖：" + dependencies} }
+                                    }
+                                }
+                                Small{text: if item.done { "已完成" } elif item.fixed { "固定安排" } elif app_state.plan != nil and !app_state.showingFormal { "待确认" } else { "已确认" }
+                                    draw_text.color: if item.fixed { muted } elif app_state.plan != nil and !app_state.showingFormal { purple } else { brand }}
+                            }
+                        }
+                    }}
+                }
+                View{width: 328 height: Fit flow: Down spacing: 16
+                    plan_summary := Card{on_render: || {
+                        if busy {
+                            Small{text: if app_state.phase == "verifying" { "保存核验中" } elif app_state.phase == "generating" { "正在生成" } else { "正在修改" } draw_text.color: purple}
+                            Heading{width: Fill text: if app_state.phase == "verifying" { "正在保存并核验" } else { "正在安排你的目标" }}
+                            Text{width: Fill text: if app_state.phase == "verifying" { "核验任务工时、依赖和保存内容，随后更新正式日历。" } else { progress_text } draw_text.color: muted}
+                        } elif app_state.phase == "failed" or app_state.phase == "confirm_failed" {
+                            Small{text: "需要重新处理" draw_text.color: gold}
+                            Heading{width: Fill text: if app_state.phase == "confirm_failed" { "计划尚未确认" } else { "本次规划已停止" }}
+                            Text{width: Fill max_lines: 6 text_overflow: mod.text.TextOverflow.Ellipsis text: app_state.error draw_text.color: muted}
+                            if app_state.phase == "confirm_failed" { Action{width: Fill text: "重新确认计划" on_click: || verify_pending()} }
+                            else { Action{width: Fill text: "重新生成计划" on_click: || retry_planning()} }
+                        } elif app_state.phase == "clarify" {
+                            Small{text: "需要补充说明" draw_text.color: purple}
+                            Heading{text: "请补充你的选择"}
+                            Text{width: Fill text: app_state.agent.clarification}
+                        } elif displayed.tasks.len() > 0 {
+                            let candidate = app_state.plan != nil and !app_state.showingFormal
+                            Small{text: if candidate { "候选计划 · 待确认" } else { "计划已确认" } draw_text.color: if candidate { purple } else { brand }}
+                            Heading{text: if candidate { "你的计划已准备好" } else { "安排已保存到日历" }}
+                            View{width: Fill height: Fit flow: Right spacing: 8
+                                View{width: 82 height: Fit flow: Down spacing: 4 Heading{text: "" + displayed.tasks.len() draw_text.text_style.font_size: 18} Small{text: "项任务"}}
+                                View{width: 82 height: Fit flow: Down spacing: 4 Heading{text: "" + total_hours(displayed) draw_text.text_style.font_size: 18} Small{text: "小时"}}
+                                View{width: 82 height: Fit flow: Down spacing: 4
+                                    Heading{text: short_deadline(displayed) draw_text.text_style.font_size: 18}
+                                    Small{text: "截止日期"}
+                                }
+                            }
+                            Text{width: Fill text: if candidate { app_state.plan.rationale } else { app_state.confirmedRationale } draw_text.color: muted}
+                            let finish = latest_end(displayed)
+                            if finish > 0 {
+                                Small{width: Fill text: "预计完成 · " + date_text(finish) + " " + clock_text(finish)}
+                                if displayed.deadline != nil {
+                                    let hours = (app_state.calendar[displayed.deadline] - finish) / 3600
+                                    Small{width: Fill text: if hours >= 0 { "期限余量 · " + floor(hours / 24) + " 天 " + floor(hours % 24) + " 小时" } else { "预计超期 · " + ceil(-hours) + " 小时" }
+                                        draw_text.color: if hours >= 0 { muted } else { gold }}
+                                }
+                            }
+                            if candidate {
+                                Action{width: Fill text: if project.tasks.len() > 0 { "确认修改后的计划" } else { "确认计划" } on_click: || confirm_plan()}
+                            } else { Small{width: Fill text: "保存核验通过 · " + app_state.savedAt.replace("T", " ") draw_text.color: brand} }
+                        } else {
+                            Small{text: "等待你的目标" draw_text.color: brand}
+                            Heading{text: "从一个目标开始"}
+                            Text{width: Fill text: "填写你想完成的事情与截止日期，Loom 会拆分任务，并将每日安排放进月历。" draw_text.color: muted}
+                        }
+                    }}
+                    risk_panel := View{width: Fill height: Fit flow: Down on_render: || {
+                        let info = capacity_info()
+                        Card{draw_bg +: {color: if info.warning { gold_soft } else { brand_soft } border_color: if info.warning { gold_line } else { line }}
+                            Heading{text: info.title draw_text +: {color: if info.warning { gold } else { brand } text_style.font_size: 12}}
+                            Text{width: Fill text: info.text draw_text.color: muted}
+                            for entry in info.risks { Small{width: Fill text: entry draw_text.color: gold} }
+                        }
+                    }}
+                    modification := Card{visible: false
+                        Heading{text: "想调整安排？"}
+                        Text{width: Fill text: "写下你的建议，Loom 会调整任务与时间，生成新的候选计划供你确认。" draw_text.color: muted}
+                        advice_input := Input{height: 116 is_multiline: true empty_text: "例如：把演示文档提前，增加半小时检查时间" on_change: |text| advice_changed(text)}
+                        revision_action := View{width: Fill height: 40 on_render: || {
+                            Action{width: Fill text: if app_state.phase == "clarify" { "提交回答并继续" } else { "根据建议修改" }
+                                enabled: loaded and !busy and app_state.inputAdvice.trim() != "" on_click: || revise_plan()}
+                        }}
                     }
                 }
-            }
-        }}
-        trace_panel := View{width: Fill height: Fit flow: Down spacing: 4 visible: false on_render: || {
-            me.visible = page == "trace"
-            if trace_rows.len() == 0 { Label{text: "尚无规划过程" draw_text.color: muted} }
-            Action{text: if trace_details { "隐藏调用详情" } else { "查看调用详情" } on_click: || { trace_details = !trace_details; ui.trace_panel.render() }}
-            for entry in trace_rows {
-                if trace_details {
-                    Label{width: Fill text: entry.to_json() draw_text.color: muted draw_text.text_style.font_size: 11}
-                } elif entry.type == "validation" {
-                    Label{width: Fill text: "检查排程：" + (if entry.violations.len() == 0 { "通过全部约束" } else { "发现 " + entry.violations.len() + " 项问题，已反馈模型" }) draw_text.color: ink}
-                } elif entry.type == "tool_call" {
-                    let names = {analyze: "检查项目结构", query_free_slots: "查询可用工作时段", validate_schedule: "复核完整日历", propose_tasks: "提出任务建议", submit_plan: "提交排程方案", ask_question: "提出必要问题", report_failure: "说明停止原因"}
-                    let title = if has_field(names, entry.name) { names[entry.name] } else { entry.name }
-                    Label{width: Fill text: "第 " + entry.call + " 次模型调用：" + title draw_text.color: ink}
-                } elif entry.type == "context_update" {
-                    Label{width: Fill text: "使用用户更新后的项目继续规划" draw_text.color: ink}
-                } elif entry.type == "failed" {
-                    Label{width: Fill text: "规划停止：" + entry.reason draw_text.color: ink}
-                }
-            }
-        }}
-        task_entry := RoundedView{width: Fill height: Fit flow: Down padding: 12 spacing: 8 visible: false draw_bg.color: #xffffff
-            editor_label := Label{text: "请选择需要编辑的任务" draw_text.color: ink}
-            edit_task_title := Input{empty_text: "任务标题"}
-            View{width: Fill height: Fit flow: Right spacing: 6
-                Label{text: "剩余工时" draw_text.color: ink}
-                edit_task_hours := Input{width: 55 text: "4"}
-                Label{text: "优先级" draw_text.color: ink}
-                edit_task_priority := Input{width: 55 text: "2"}
-            }
-            Label{width: Fill text: "工时填写 0 表示任务完成；优先级 1 最高；完成时间块不会扣减工时" draw_text.color: muted}
-            edit_task_dependencies := Input{empty_text: "依赖编号，用英文逗号分隔，例如 task-1,task-2"}
-            Action{text: "保存任务与进度" on_click: || save_task_edit()}
-            Label{text: "添加任务" draw_text.color: ink}
-            task_title := Input{empty_text: "任务标题"}
-            View{width: Fill height: Fit flow: Right spacing: 8 align: Align{y: 0.5}
-                Label{text: "剩余工时" draw_text.color: ink}
-                task_hours := Input{width: 90 text: "4"}
-                Action{text: "添加任务" on_click: || add_task()}
             }
         }
-        task_list := View{width: Fill height: Fit flow: Down spacing: 6 visible: false on_render: || {
-            me.visible = page == "tasks"
-            if project.tasks.len() == 0 {
-                Label{text: "尚无任务，请添加任务" draw_text.color: muted}
-            }
-            for i in project.tasks.len() {
-                let task = project.tasks[i]
-                RoundedView{width: Fill height: Fit flow: Down padding: 8 spacing: 4 draw_bg.color: #xf1f5f9
-                    Label{width: Fill text: task.id + " · " + task.title draw_text.color: ink}
-                    Label{text: "剩余 " + task.remainingHours + " 小时" draw_text.color: muted}
-                    View{width: Fill height: Fit flow: Right spacing: 6
-                        Action{text: "编辑 " + task.id on_click: || open_task_editor(task.id)}
-                        Action{text: "删除 " + task.id on_click: || delete_task(task.id)}
-                    }
-                    Action{text: (if task.adjustable { "关闭自动调整 " } else { "允许自动调整 " }) + task.id on_click: || toggle_adjustable(task.id)}
-                }
-            }
-        }}
     }
 }

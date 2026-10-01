@@ -1,28 +1,26 @@
-# 初赛演示交付报告
+# 目标日历交付说明
 
-交付范围为目标录入、真实模型提出任务、用户修改确认、完整排程、批准保存、实际回读核验、更新进度后的重新规划及重新启动恢复。
+应用使用 Figma 定义的顶部品牌栏、目标入口、月历、当天完整安排与右侧计划说明。颜色、字体、列宽、日期格尺寸和控件状态由设计数据确定。原生窗口默认 1440×1000，页面支持滚动查看完整内容。
 
-## 已具备的交付内容
+用户填写目标和截止日期后，MiniMax 自动拆分任务并查询实际可用工作时段，将候选安排显示到月历。用户可以通过文字建议调整任务和时间。正式计划与候选分别保存；确认后实际回读候选文件并核验，通过后更新正式日历。
 
-- `bundle/main.splash`：真实 card-host 客户端，包含项目、任务、方案、日历和过程界面。
-- `server/`：真实 MiniMax 工具调用服务，模型密钥通过环境提供。
-- `scripts/run_dev_server.py` 与 `scripts/run_client.py`：服务和客户端启动入口。
-- `scripts/check_demo.py`：通过原生控件验证主流程。
-- `requirements.txt` 与 `.env.example`：固定依赖和服务配置。
-- `docs/DEMO.md`、`docs/PROTOCOL.md`、`docs/PRIVACY.md`：演示步骤、协议和数据处理说明。
+## 交付文件
 
-## 验证环境
+- `bundle/main.splash`：原生目标日历与完整交互。
+- `bundle/assets/fonts/`：Noto Sans SC、Manrope 和字体授权。
+- `server/`：MiniMax 连接、任务重构、日历约束和保存核验。
+- `scripts/run_client.py`：窗口、设备时区和数据目录启动配置。
+- `scripts/check_demo.py`：真实控件、模型调用和恢复验证。
+- `docs/DEMO.md`、`docs/PROTOCOL.md`、`docs/PRIVACY.md`：演示、协议与数据说明。
 
-macOS Apple Silicon；Python 3.9.6；官方 card-host 已构建运行；MiniMax-M2.7 真实 API；客户端 HTTPS 请求通过实际 Cloudflare 隧道到达本机 FastAPI 服务。
+## 验证
 
-领域约束、完整核验、容量、权限、使用记录与架构检查共 50 项自动测试通过。主流程运行证据存放在 `docs/evidence/demo.json`，每步记录实际项目、版本、回执与提供方报告用量。
+环境为 macOS Apple Silicon、Python 3.9.6、官方 card-host、MiniMax-M2.7 和实际 Cloudflare HTTPS 连接。
 
-主流程已从空项目完成真实模型任务建议、用户修改确认、首次排程批准核验和进度更新后的重新规划核验。最终项目版本为 6，重新启动后恢复相同项目和核验回执。
+五十九项自动测试覆盖日历约束、完整回读核验、任务重构与工作记录保护、容量、权限、使用记录和架构。主流程证据记录于 `docs/evidence/calendar-demo.json`。界面按 Figma 数据和实际控件几何信息检查。
 
-## 演示配置与正式提交
+## 演示运行
 
-当前应用使用已运行的开发 HTTPS 隧道，演示要求保持本机服务及隧道运行。临时域名变化后，需要更新客户端地址与主机清单。
+启动步骤见 `docs/DEMO.md`。开发 HTTPS 地址要求本机服务和隧道持续运行。重新创建隧道后，需要同步客户端地址、主机清单和隐私说明链接。
 
-客户端通过 card-host 的实际权限检查并运行。应用商店发布需要正式发布者资料、公开隐私入口、截图和签名。初赛演示使用本地客户端运行方式，正式提交资料记录在 `docs/OPEN_QUESTIONS.md`。
-
-延期、容量不足和使用额度相关实现保留在代码中，对特殊情况的进一步验收安排在演示主流程之后。
+初赛成果使用本地原生客户端。正式发布需要持续运行的公网服务、发布资料、截图和签名，具体资料见 `docs/OPEN_QUESTIONS.md`。

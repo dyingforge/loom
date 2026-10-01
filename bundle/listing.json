@@ -1,14 +1,14 @@
 {
-  "name": "Loom 项目经理日历",
-  "subtitle": "可执行的项目排程与重排 Agent",
+  "name": "Loom 目标日历",
+  "subtitle": "填写目标，自动安排每一天",
   "publisher": {
     "name": "Loom Agent",
-    "privacy_policy_url": "https://invitation-newport-commands-collections.trycloudflare.com/privacy"
+    "privacy_policy_url": "https://quotes-geographical-per-foreign.trycloudflare.com/privacy"
   },
   "category": "productivity",
   "platforms": ["macos"],
   "age_rating": "all",
-  "description": "Loom 是 OctoSense 上的项目排程 Agent。用户输入目标、任务依赖与剩余工时；Loom 依据硬约束给出排程方案；批准后保存并核验。客户端 Splash 实现，Python + MiniMax 服务端独立部署，不在应用包内。",
+  "description": "填写目标与截止日期，Loom 自动拆分任务并安排到月历。查看每天的完整安排，通过文字建议调整任务与时间，确认并核验后保存正式计划。客户端使用 OctoScript 原生控件，规划由 Python 服务与 MiniMax 完成。",
   "icon": "assets/icon.svg",
   "screenshots": [],
   "keywords": ["project", "calendar", "scheduling", "agent"]

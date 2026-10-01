@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime
 from typing import Any
 
@@ -82,6 +83,46 @@ SCHEMAS: list[dict[str, Any]] = [
     VALIDATE_SCHEDULE_SCHEMA,
     PROPOSE_TASKS_SCHEMA,
 ]
+
+REBUILD_TASKS_SCHEMA = deepcopy(PROPOSE_TASKS_SCHEMA)
+REBUILD_TASKS_SCHEMA["name"] = "rebuild_tasks"
+REBUILD_TASKS_SCHEMA["description"] = (
+    "根据目标、截止日期和用户建议提交完整任务清单，然后继续安排日历。"
+    "可以新增、修改或删除尚未开始的任务。已有任务沿用 id；必须保留已完成或已有开始时间块的任务，"
+    "已完成任务剩余工时保持为零。返回完整任务清单，随后查询空闲时间并提交完整日历。"
+)
+REBUILD_TASKS_SCHEMA["parameters"]["properties"]["tasks"]["items"]["properties"]["remainingHours"] = {
+    "type": "number", "minimum": 0, "maximum": 720,
+}
+
+
+def rebuild_tasks(project: Project, args: dict, now) -> Project:
+    previous = {task.id: task for task in project.tasks}
+    tasks = []
+    seen = set()
+    for value in args["tasks"]:
+        task = Task.model_validate(value)
+        if task.id in seen:
+            raise ValueError("任务编号重复：" + task.id)
+        seen.add(task.id)
+        old = previous.get(task.id)
+        if old is not None:
+            task.blocks = [block.model_copy(deep=True) for block in old.blocks]
+            task.adjustable = old.adjustable
+            task.done = old.done
+            if old.done and task.remainingHours != old.remainingHours:
+                raise ValueError("已经完成的任务不能修改剩余工时：" + task.id)
+        if not task.done and task.remainingHours <= 0:
+            raise ValueError("尚未完成的任务需要正数工时：" + task.id)
+        tasks.append(task)
+    for old in project.tasks:
+        if (old.done or any(block.done or block.start < now for block in old.blocks)) and old.id not in seen:
+            raise ValueError("必须保留已经开始或完成的任务：" + old.id)
+    target = project.model_copy(update={"tasks": tasks}, deep=True)
+    analysis = analyze(target)
+    if analysis["cycles"] or analysis["missingRefs"]:
+        raise ValueError("任务依赖存在循环或缺少引用：" + str(analysis))
+    return target
 
 
 # ---------- 工具实现 ----------
