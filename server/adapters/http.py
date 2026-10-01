@@ -145,11 +145,20 @@ async def advance(request: AgentRequest) -> dict:
     else:
         state = State(project=request.snapshot)
     state = run(state, _get_llm())
+    # 从 trace 中提取 propose_tasks 的 proposed 结果，供 issue 11 客户端使用
+    proposed_tasks = []
+    for msg in state.messages:
+        if msg.get("role") == "tool" and msg.get("name") == "propose_tasks":
+            res = msg.get("result") or {}
+            if isinstance(res, dict) and "proposed" in res:
+                proposed_tasks = res["proposed"]
+                break
     if state.status == "submitted":
         return {
             "type": "plan",
             "payload": state.plan.model_dump(mode="json") if state.plan else {},
             "trace": state.trace,
+            "proposed_tasks": proposed_tasks,
             "state": state.to_dict(),
         }
     if state.status == "clarified":
@@ -157,12 +166,14 @@ async def advance(request: AgentRequest) -> dict:
             "type": "clarify",
             "payload": {"question": state.clarification or ""},
             "trace": state.trace,
+            "proposed_tasks": proposed_tasks,
             "state": state.to_dict(),
         }
     return {
         "type": "failed",
         "payload": {"reason": state.failure_reason or "unknown"},
         "trace": state.trace,
+        "proposed_tasks": proposed_tasks,
         "state": state.to_dict(),
     }
 

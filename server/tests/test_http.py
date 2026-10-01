@@ -121,3 +121,35 @@ def test_verify_not_verified_on_missing_block(client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "not_verified"
+
+def test_advance_surfaces_proposed_tasks_in_response(client: TestClient) -> None:
+    """模型调用 propose_tasks 工具时，响应应当把 proposed 列表带到顶层。"""
+    from server.adapters import http as http_mod
+    from server.tests.stubs import ScriptedLLM
+    http_mod.LLM = ScriptedLLM([
+        {"type": "tool", "name": "propose_tasks", "arguments": {
+            "tasks": [
+                {"id": "p1", "title": "需求梳理", "priority": 1,
+                 "remainingHours": 4, "dependsOn": []},
+                {"id": "p2", "title": "实现", "priority": 2,
+                 "remainingHours": 8, "dependsOn": ["p1"]},
+            ]
+        }},
+        {"type": "failed",
+         "reason": "提议已生成，等待用户审阅"},
+    ])
+    r = client.post("/v1/agent/advance", json={
+        "snapshot": {
+            "id": "p", "version": 1, "goal": "g",
+            "workHours": {"start": "09:00", "end": "18:00"},
+            "tasks": [],
+        },
+        "trigger": "propose",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["type"] == "failed"
+    assert len(body["proposed_tasks"]) == 2
+    assert body["proposed_tasks"][0]["id"] == "p1"
+    assert body["proposed_tasks"][1]["dependsOn"] == ["p1"]
+

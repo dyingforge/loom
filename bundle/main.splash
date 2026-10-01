@@ -186,6 +186,9 @@ fn update_task_hours(i, h) {
 
 // issue 13：标记块完成
 let pending_block_complete: dict = {}
+let proposed_tasks: list = []                  // issue 11
+let propose_panel_open: bool = false
+let last_failure_reason: str = ""              // issue 12
 
 fn toggle_block_done(bid) {
     for b in blocks {
@@ -402,6 +405,116 @@ fn render_trace_inner() {
     }
 }
 
+
+// ---------- issue 11：提议任务 ----------
+fn call_propose_tasks() {
+    if processing { return }
+    processing = true
+    ui.status_row.render()
+    let body = {
+        snapshot: {id: "loom-current", version: version,
+                   goal: goal,
+                   workHours: {start: work_start, end: work_end}},
+        trigger: "propose"
+    }
+    let res = fetch("https://loom.example.com/v1/agent/advance",
+                    body.to_json()).await()
+    processing = false
+    if res == nil or res.status_code >= 400 {
+        status_text = "提议任务失败：网络不可用"
+        ui.status_row.render()
+        return
+    }
+    let parsed = res.body.to_string().parse_json()
+    if parsed.type == "failed" {
+        status_text = "提议任务失败：" + parsed.payload.reason
+        last_failure_reason = parsed.payload.reason
+        ui.status_row.render()
+        return
+    }
+    // 模型返回的 trace 中由 propose_tasks 工具的 result.proposed 写入
+    let found = []
+    for t in parsed.trace {
+        if t.type == "tool_call" and t.name == "propose_tasks" and t.ok {
+            // propose_tasks result 不直接放在 trace 工具消息里；
+            // 服务端应将其转写进 trace.tool_result.proposed
+            found.push(t)
+        }
+    }
+    if parsed.type == "plan" {
+        // 兜底：部分实现会把 proposed 写在 plan.changes[].after.taskId 等字段
+        status_text = "模型返回了排程而非提议，请使用发起规划"
+        ui.status_row.render()
+        return
+    }
+    // 服务端把 propose_tasks 的 proposed 直接复制到顶层 proposed_tasks 字段
+    if parsed.proposed_tasks != nil {
+        proposed_tasks = parsed.proposed_tasks
+    } else {
+        // 兜底：空列表
+        proposed_tasks = []
+    }
+    propose_panel_open = true
+    status_text = "已收到提议；请审阅、修改、确认入项目"
+    trace = parsed.trace
+    ui.propose_panel.render()
+    ui.status_row.render()
+    ui.trace_panel.render()
+}
+
+fn accept_proposed_tasks() {
+    // 把 proposed_tasks 合并入 tasks；递增 version；规划待重新发起
+    if proposed_tasks.len() == 0 { return }
+    let new_tasks = []
+    for p in proposed_tasks {
+        new_tasks.push({
+            id: p.id, title: (p.title or ("任务 " + p.id)),
+            priority: (p.priority or 2),
+            remainingHours: (p.remainingHours or 1.0),
+            done: false,
+            dependsOn: (p.dependsOn or []),
+            adjustable: true,
+            blocks: []
+        })
+    }
+    // 合并：把新提议追加到现有 tasks 之后；同 ID 不重复添加
+    let existing_ids = []
+    for t in tasks { existing_ids.push(t.id) }
+    for p in new_tasks {
+        if not (existing_ids.index_of(p.id) >= 0) {
+            tasks.push(p)
+        }
+    }
+    proposed_tasks = []
+    propose_panel_open = false
+    persist_snapshot()
+    status_text = "提议已并入任务列表；可继续发起规划"
+    ui.propose_panel.render()
+    ui.task_list.render()
+    ui.status_row.render()
+}
+
+fn reject_proposed_tasks() {
+    proposed_tasks = []
+    propose_panel_open = false
+    status_text = "已拒绝提议"
+    ui.propose_panel.render()
+    ui.status_row.render()
+}
+
+fn toggle_propose_panel() {
+    propose_panel_open = (not propose_panel_open)
+    ui.propose_panel.render()
+}
+
+// ---------- issue 12：被拒后调整后重规划 ----------
+fn replan_after_failure() {
+    // 不修改 tasks；只触发新一轮规划；version 已递增 → 旧方案不再适用
+    plan_payload = {}
+    last_failure_reason = ""
+    call_agent()
+}
+
 // ---------- 启动 ----------
 fn boot() {
     let s = load_latest_snapshot()
@@ -504,6 +617,11 @@ SolidView{width: Fill height: Fill flow: Down padding: 16 draw_bg.color: #xfafaf
 
     actions_row := RoundedView{width: Fill height: Fit flow: Right padding: 8
                                draw_bg.color: #xffffff
+    ButtonFlat{text: (if processing { "处理中…" } else { "提议任务" })
+               draw_bg +: {color: (if processing { #x9ca3af } else { #x0891b2 })
+                           color_hover: #x0e7490 color_down: #x155e75}
+               draw_text +: {color: #xffffff}
+               on_click: || call_propose_tasks()}
     ButtonFlat{text: (if processing { "处理中…" } else { "发起规划" })
                draw_bg +: {color: (if processing { #x9ca3af } else { #x16a34a })
                            color_hover: #x15803d color_down: #x166534}
@@ -553,6 +671,44 @@ SolidView{width: Fill height: Fill flow: Down padding: 16 draw_bg.color: #xfafaf
             let after_s = if ch.after == nil { "空" } else { ch.after.start + "–" + ch.after.end }
             Label{text: ch.blockId + ": " + before_s + " → " + after_s
                   draw_text.color: #x1c1c1e}
+        }
+    }}
+
+    replan_row := RoundedView{width: Fill height: Fit flow: Down padding: 8
+                              draw_bg.color: #xffffff
+                              on_render: || {
+        if last_failure_reason == "" { return }
+        Label{text: "最近失败：" + last_failure_reason draw_text.color: #xb91c1c}
+        Label{text: "可调整后重规划，或查看切分/取舍建议"
+              draw_text.color: #x1c1c1e}
+        ButtonFlat{text: "调整后重规划"
+                   draw_bg +: {color: #xf59e0b color_hover: #xd97706 color_down: #xb45309}
+                   draw_text +: {color: #xffffff}
+                   on_click: || replan_after_failure()}
+    }}
+
+    propose_panel := RoundedView{width: Fill height: (if propose_panel_open { Fit } else { 0 })
+                                 flow: Down padding: 8
+                                 draw_bg.color: #xffffff
+                                 on_render: || {
+        if not propose_panel_open { return }
+        Label{text: "模型提议的任务（请审阅并修改后接受）" draw_text.color: #x1c1c1e}
+        for i in proposed_tasks.len() {
+            let p = proposed_tasks[i]
+            Label{text: p.id + " · " + (p.title or "")
+                  + " · " + p.remainingHours.to_string() + "h"
+                  draw_text.color: #x1c1c1e}
+        }
+        actions := RoundedView{width: Fill height: Fit flow: Right padding: 4
+                               draw_bg.color: #xffffff
+            ButtonFlat{text: "接受入项目"
+                       draw_bg +: {color: #x16a34a color_hover: #x15803d color_down: #x166534}
+                       draw_text +: {color: #xffffff}
+                       on_click: || accept_proposed_tasks()}
+            ButtonFlat{text: "拒绝"
+                       draw_bg +: {color: #x6b7280 color_hover: #x4b5563 color_down: #x374151}
+                       draw_text +: {color: #xffffff}
+                       on_click: || reject_proposed_tasks()}
         }
     }}
 
