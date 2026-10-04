@@ -1,60 +1,91 @@
-#!/usr/bin/env python3
-"""Build the Loom native client from the dependency sources fixed in LOCK.json.
+# 按 native/LOCK.json 准备并构建 Loom 原生宿主。
+#
+# 四个原生依赖固定在 native/LOCK.json。其中两个带 Loom 修复的仓库，其提交保存为
+# native/bundles 下的 Git 提交包，含固定上游基线的干净仓库可以用 Git 验证并取回，
+# 不需要重新应用补丁。本脚本只使用标准库与 git、cargo 命令：验证锁定记录、提交包
+# 与现有检出的提交、干净状态和 origin，在 .scratch/native 中检出固定源码，从提交包
+# 取回精确修复提交，然后执行 cargo build --release --locked 构建 hub 与 card-host，
+# 并在二进制旁写入构建标记。不使用 sed、替换命令或 git apply 改写依赖源码。
 
-The four native repositories are pinned in ``native/LOCK.json``. Two of them
-carry Loom's fixes; their commits are stored as Git bundles under
-``native/bundles`` so a clean checkout of the fixed upstream baseline can verify
-and fetch them without re-applying patches. This script:
-
-* verifies ``native/LOCK.json``, the bundle checksums and the existing checkouts
-  (commit, clean tree and origin), then, unless ``--verify`` was given,
-* checks out each fixed source under the ignored ``.scratch/native`` directory,
-  fetching the exact fix commit from the project's Git bundle, and
-* runs ``cargo build --release --locked`` for ``hub`` and ``card-host`` and
-  writes a build stamp next to them.
-
-It uses only the Python standard library plus the ``git`` and ``cargo``
-commands. It never rewrites a dependency source with a script, ``sed`` or
-``git apply``, and it refuses to touch a checkout that is dirty or whose origin
-does not match the lock.
-"""
 import argparse
 import hashlib
 import json
 import os
 import subprocess
+from collections import deque
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "native" / "LOCK.json"
 SCRATCH = ROOT / ".scratch"
 TEMP = SCRATCH / "native-temp"
+LOG_PATH = SCRATCH / "native-build.log"
 STAMP_NAME = "native-build.json"
 
 
-def run(args, *, cwd=None, check=True):
+def _env():
     env = dict(os.environ)
-    # Keep every intermediate file inside the ignored .scratch tree.
+    # 中间文件只放在被忽略的 .scratch 中，不使用系统临时目录。
     env["TMPDIR"] = str(TEMP)
-    result = subprocess.run(
-        [str(arg) for arg in args],
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if check and result.returncode != 0:
+    return env
+
+
+def _tail(path, lines):
+    try:
+        with path.open("r", errors="replace") as handle:
+            return "".join(deque(handle, maxlen=lines))
+    except OSError:
+        return ""
+
+
+def streamed(args, *, cwd=None):
+    # 大输出（cargo、clone、fetch）写入日志，不在内存中缓存整份输出。
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    with LOG_PATH.open("ab") as log:
+        log.write(("$ " + " ".join(str(arg) for arg in args) + "\n").encode())
+        log.flush()
+        result = subprocess.run(
+            [str(arg) for arg in args],
+            cwd=cwd,
+            env=_env(),
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+    if result.returncode != 0:
         raise SystemExit(
-            "命令失败（退出码 {}）：{}\n{}".format(
-                result.returncode, " ".join(str(arg) for arg in args), result.stdout
+            "命令失败（退出码 {}）：{}\n日志末尾：\n{}".format(
+                result.returncode, " ".join(str(arg) for arg in args), _tail(LOG_PATH, 30)
             )
         )
     return result
 
 
-def git(repo, *args, check=True):
-    return run(["git", "-C", repo, *args], check=check)
+def query(args, *, cwd=None, check=True):
+    # 查询类命令输出很小，单独读取，失败时只带 stderr。
+    result = subprocess.run(
+        [str(arg) for arg in args],
+        cwd=cwd,
+        env=_env(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if check and result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise SystemExit(
+            "命令失败（退出码 {}）：{}\n{}".format(
+                result.returncode, " ".join(str(arg) for arg in args), detail
+            )
+        )
+    return result
+
+
+def git_query(repo, *args, check=True):
+    return query(["git", "-C", repo, *args], check=check)
+
+
+def git_stream(repo, *args):
+    return streamed(["git", "-C", repo, *args])
 
 
 def trimmed(result):
@@ -110,14 +141,14 @@ def verify_bundle(entry):
     repo = checkout_path(entry)
     if not repo.is_dir():
         raise SystemExit("{} 缺少源码目录，无法验证提交包：{}".format(entry["name"], repo))
-    git(repo, "bundle", "verify", str(bundle))
-    heads = trimmed(git(repo, "bundle", "list-heads", str(bundle)))
+    git_query(repo, "bundle", "verify", str(bundle))
+    heads = trimmed(git_query(repo, "bundle", "list-heads", str(bundle)))
     if entry["fix"] not in heads:
         raise SystemExit("{} 提交包不包含修复提交 {}".format(entry["name"], entry["fix"]))
 
 
 def check_origin(entry, repo):
-    origin = git(repo, "remote", "get-url", "origin", check=False)
+    origin = git_query(repo, "remote", "get-url", "origin", check=False)
     if origin.returncode == 0 and trimmed(origin) != entry["url"]:
         raise SystemExit(
             "{} origin 不匹配，拒绝覆盖：{} != {}".format(entry["name"], trimmed(origin), entry["url"])
@@ -130,12 +161,12 @@ def verify_checkout(entry):
         raise SystemExit("{} 缺少源码目录：{}".format(entry["name"], repo))
     if not (repo / ".git").exists():
         raise SystemExit("{} 不是 Git 仓库：{}".format(entry["name"], repo))
-    head = trimmed(git(repo, "rev-parse", "HEAD"))
+    head = trimmed(git_query(repo, "rev-parse", "HEAD"))
     if head != entry["fix"]:
         raise SystemExit(
             "{} 提交不符：{}\n  期望 {}\n  实际 {}".format(entry["name"], repo, entry["fix"], head)
         )
-    dirty = trimmed(git(repo, "status", "--porcelain"))
+    dirty = trimmed(git_query(repo, "status", "--porcelain"))
     if dirty:
         raise SystemExit("{} 工作区不干净，拒绝覆盖：\n{}".format(entry["name"], dirty))
     check_origin(entry, repo)
@@ -145,30 +176,30 @@ def verify_checkout(entry):
 def ensure_checkout(entry):
     repo = checkout_path(entry)
     if not repo.exists():
-        run(["git", "clone", entry["url"], str(repo)])
+        git_stream(ROOT, "clone", entry["url"], str(repo))
     elif not (repo / ".git").exists():
         raise SystemExit("{} 路径已存在且不是 Git 仓库，拒绝覆盖：{}".format(entry["name"], repo))
     check_origin(entry, repo)
-    dirty = trimmed(git(repo, "status", "--porcelain"))
+    dirty = trimmed(git_query(repo, "status", "--porcelain"))
     if dirty:
         raise SystemExit("{} 工作区不干净，拒绝覆盖：\n{}".format(entry["name"], dirty))
-    head = trimmed(git(repo, "rev-parse", "HEAD"))
+    head = trimmed(git_query(repo, "rev-parse", "HEAD"))
     if head == entry["fix"]:
         return
-    # The fixed commit comes out of the versioned bundle, never a re-applied
-    # patch. The baseline must be present for the bundle's prerequisite.
-    baseline = git(repo, "cat-file", "-e", "{}^{{commit}}".format(entry["upstream"]), check=False)
+    # 修复提交来自版本管理的提交包，不来自重新应用的补丁；提交包要求本地已有
+    # 固定上游基线。
+    baseline = git_query(repo, "cat-file", "-e", "{}^{{commit}}".format(entry["upstream"]), check=False)
     if baseline.returncode != 0:
-        run(["git", "-C", repo, "fetch", "origin"])
-        baseline = git(repo, "cat-file", "-e", "{}^{{commit}}".format(entry["upstream"]), check=False)
+        git_stream(repo, "fetch", "origin")
+        baseline = git_query(repo, "cat-file", "-e", "{}^{{commit}}".format(entry["upstream"]), check=False)
         if baseline.returncode != 0:
             raise SystemExit(
                 "{} 缺少固定上游基线 {}，无法取回提交包".format(entry["name"], entry["upstream"])
             )
     if entry.get("bundle"):
         bundle = check_bundle_file(entry)
-        git(repo, "fetch", str(bundle), entry["bundle_ref"])
-    git(repo, "checkout", "--detach", entry["fix"])
+        git_stream(repo, "fetch", str(bundle), entry["bundle_ref"])
+    git_stream(repo, "checkout", "--detach", entry["fix"])
     verify_checkout(entry)
 
 
@@ -185,12 +216,13 @@ def build(lock):
     packages = []
     for name in ("octosense-card-host", "octosense-app-hub"):
         packages.extend(["-p", name])
-    run(["cargo", "build", "--release", "--locked", *packages], cwd=repo)
+    streamed(["cargo", "build", "--release", "--locked", *packages], cwd=repo)
     binary = repo / "target" / "release" / "card-host"
     if not binary.is_file():
         raise SystemExit("构建后没有找到 {}".format(binary))
     stamp = {
         "lock_sha256": sha256_file(LOCK_PATH),
+        "card_host_sha256": sha256_file(binary),
         "repositories": {item["name"]: item["fix"] for item in lock["repositories"]},
     }
     (binary.parent / STAMP_NAME).write_text(json.dumps(stamp, indent=2, sort_keys=True) + "\n")
@@ -206,6 +238,9 @@ def main():
     )
     args = parser.parse_args()
     TEMP.mkdir(parents=True, exist_ok=True)
+    if not args.verify:
+        # 每次构建重新开始一份日志，避免日志无限增长。
+        LOG_PATH.write_text("")
     lock = load_lock()
     if args.verify:
         for entry in lock["repositories"]:

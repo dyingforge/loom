@@ -12,7 +12,7 @@
 | octoscript | `5991dfae9344589e732b2605b530f788e8bbcd11` | 同上游 |
 | OctoScript-App-Design-Flow | `a5a87d3c3ff305768ae46bc5f6689abb48115cc4` | 同上游 |
 
-`native/LOCK.json` 是这些来源的唯一记录，包含官方地址、提交包校验值、补丁顺序与构建命令。按固定来源准备并构建原生宿主：
+`native/LOCK.json` 记录 Makepad、OctoSense-App-Hub、octoscript-makepad 与 octoscript 四个原生依赖仓库的官方地址、提交包校验值、补丁顺序与构建命令。OctoScript-App-Design-Flow 是准备运行环境的作者工具，其固定版本为 `a5a87d3c3ff305768ae46bc5f6689abb48115cc4`，不在原生构建的四个依赖之列，未记录在该文件中。按固定来源准备并构建原生宿主：
 
 ```sh
 python3 scripts/build_native.py
