@@ -156,24 +156,23 @@ fn load_state() {
     return outcome.response.body.to_string().parse_json()
 }
 fn commit_business() {
-    let snapshot = clone_value(app_state)
-    let attempt = 0
-    while attempt < 2 {
-        let outcome = state_request("/v1/commit", {projectId: project.id, expectedVersion: business_version, business: snapshot}).await()
-        if outcome.failed != "" { show_status("保存业务记录失败：" + outcome.failed); return }
-        let status = outcome.response.status_code
-        let body = outcome.response.body.to_string().parse_json()
-        if status == 409 and has_field(body, "version") {
-            business_version = body.version; attempt = attempt + 1; continue
-        }
-        if status >= 400 { show_status("保存业务记录失败：" + state_error(outcome)); return }
-        business_version = body.version; app_state = clone_value(body.business)
-        return
+    let outcome = state_request("/v1/commit", {projectId: project.id, expectedVersion: business_version, business: clone_value(app_state)}).await()
+    if outcome.failed != "" { show_status("保存业务记录失败：" + outcome.failed); return false }
+    let status = outcome.response.status_code
+    let body = outcome.response.body.to_string().parse_json()
+    if status == 409 {
+        # 版本冲突说明业务记录已被更新；不用旧快照覆盖，停止当前操作。
+        show_status("保存业务记录失败：本地记录已被更新，请重启后再操作")
+        return false
     }
-    show_status("保存业务记录失败：版本冲突未解决")
+    if status >= 400 { show_status("保存业务记录失败：" + state_error(outcome)); return false }
+    business_version = body.version; app_state = clone_value(body.business)
+    return true
 }
 fn save_draft() {
     if !loaded { return }
+    # 修订号在客户端内单调递增，不因切换问题重置；回到 initial 时新修订号
+    # 仍大于旧草稿，宿主不会拒绝新输入。
     draft_revision = draft_revision + 1
     draft_promise_revision = draft_revision
     draft_promise = state_request("/v1/draft", {projectId: project.id, questionId: draft_question,
@@ -293,7 +292,8 @@ fn request_error(outcome) {
 }
 fn planning_failed(reason) {
     busy = false; app_state.activeJob = nil; app_state.phase = "failed"; app_state.error = reason
-    commit_business(); show_status("本次规划已停止：" + reason); refresh()
+    if commit_business() { show_status("本次规划已停止：" + reason) }
+    refresh()
 }
 fn poll_planning() {
     let started = time_now()
@@ -306,23 +306,30 @@ fn poll_planning() {
             app_state.activeJob = nil
             let result = response.result
             app_state.capacity = result.capacity
+            let message = ""
             if result.type == "plan" {
                 app_state.plan = result.payload; app_state.draftProject = result.draftProject
                 for key value in result.calendar { app_state.calendar["" + key] = value }
                 app_state.phase = "candidate"; app_state.showingFormal = false; app_state.pendingVerification = nil
                 app_state.error = ""; draft_answer = ""; ui.advice_input.set_text("")
-                show_status("候选计划已生成，请查看日历并确认")
+                app_state.question = ""; app_state.resumeToken = ""; app_state.questionId = "initial"
+                draft_question = "initial"
+                message = "候选计划已生成，请查看日历并确认"
             } elif result.type == "clarify" {
                 app_state.phase = "clarify"
                 app_state.question = result.payload.question
                 app_state.resumeToken = result.resumeToken
                 app_state.questionId = result.resumeToken
                 app_state.workingProject = result.draftProject
-                draft_question = result.resumeToken; draft_revision = 0; draft_answer = ""
+                draft_question = result.resumeToken; draft_answer = ""
                 ui.advice_input.set_text("")
-                show_status(result.payload.question)
+                message = result.payload.question
             } else { planning_failed(result.payload.reason); return }
-            editing_goal = false; commit_business(); busy = false; refresh(); return
+            editing_goal = false
+            let saved = commit_business()
+            busy = false
+            if saved { show_status(message) }
+            refresh(); return
         }
         assert(response.status == "running")
         progress_text = response.stage; show_status(progress_text); ui.plan_summary.render()
@@ -333,11 +340,15 @@ fn launch_request(request) {
     busy = true; app_state.lastRequest = clone_value(request)
     app_state.phase = if request.trigger == "compose" { "generating" } else { "revising" }
     app_state.error = ""; progress_text = if request.trigger == "compose" { "正在拆分目标" } else { "正在根据建议调整任务和时间" }
-    editing_goal = false; commit_business(); show_status(progress_text); refresh()
+    editing_goal = false
+    if !commit_business() { busy = false; refresh(); return }
+    show_status(progress_text); refresh()
     let outcome = request_api("/v1/agent/jobs", request).await()
     let error = request_error(outcome); if error != "" { planning_failed(error); return }
     let response = outcome.response.body.to_string().parse_json()
-    app_state.activeJob = response.jobId; commit_business(); poll_planning()
+    app_state.activeJob = response.jobId
+    if !commit_business() { busy = false; refresh(); return }
+    poll_planning()
 }
 fn generate_plan() {
     if busy { return }
@@ -352,18 +363,26 @@ fn revise_plan() {
     if busy { return }
     let advice = ui.advice_input.text().trim(); if advice == "" { return }
     if app_state.phase == "clarify" {
-        draft_answer = advice
-        save_draft()
-        let revision = draft_promise_revision
-        let outcome = draft_promise.await()
-        let error = request_error(outcome)
-        if error != "" { show_status("回答草稿保存失败：" + error); return }
-        let body = outcome.response.body.to_string().parse_json()
-        if !body.applied or body.revision != revision {
-            show_status("回答草稿未保存到最新修订，请稍后重试"); return
+        let attempt = 0
+        while attempt < 3 {
+            let answer = ui.advice_input.text().trim()
+            if answer == "" { show_status("请填写你的回答"); return }
+            draft_answer = answer
+            save_draft()
+            let revision = draft_promise_revision
+            let outcome = draft_promise.await()
+            let error = request_error(outcome)
+            if error != "" { show_status("回答草稿保存失败：" + error); return }
+            let body = outcome.response.body.to_string().parse_json()
+            if !body.applied or body.revision != revision {
+                show_status("回答草稿未保存到最新修订，请稍后重试"); return
+            }
+            # 等待保存期间用户可能继续输入；只有输入与刚保存的修订一致才提交。
+            if ui.advice_input.text().trim() != answer { attempt = attempt + 1; continue }
+            launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "",
+                resumeToken: app_state.resumeToken, clarificationAnswer: answer, now: current_iso()}); return
         }
-        launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "",
-            resumeToken: app_state.resumeToken, clarificationAnswer: advice, now: current_iso()}); return
+        show_status("回答仍在变化，请停止输入后再次提交"); return
     }
     let snapshot = if app_state.plan != nil { plan_project(app_state.draftProject, app_state.plan) } else { clone_value(project) }
     snapshot.version = project.version
@@ -386,19 +405,25 @@ fn toggle_view() {
 }
 fn verify_pending() {
     if busy or app_state.pendingVerification == nil { return }
-    busy = true; app_state.phase = "verifying"; commit_business(); show_status("正在保存并核验完整日历"); refresh()
+    busy = true; app_state.phase = "verifying"
+    if !commit_business() { busy = false; refresh(); return }
+    show_status("正在保存并核验完整日历"); refresh()
     let pending = clone_value(app_state.pendingVerification)
     let outcome = request_api("/v1/calendar/verify", {beforeSnapshot: pending.before, draftProject: pending.draft,
         plan: pending.plan, readbackSnapshot: pending.target, now: current_iso()}).await()
     let error = request_error(outcome)
     if error != "" {
         app_state.phase = "confirm_failed"; app_state.error = error
-        commit_business(); busy = false; show_status("确认核验失败：" + error); refresh(); return
+        let saved = commit_business(); busy = false
+        if saved { show_status("确认核验失败：" + error) }
+        refresh(); return
     }
     let receipt = outcome.response.body.to_string().parse_json()
     if receipt.status != "verified" {
         app_state.phase = "confirm_failed"; app_state.error = receipt.reason
-        commit_business(); busy = false; show_status("计划尚未确认：" + receipt.reason); refresh(); return
+        let saved = commit_business(); busy = false
+        if saved { show_status("计划尚未确认：" + receipt.reason) }
+        refresh(); return
     }
     project = clone_value(pending.target); app_state.project = project; app_state.receipt = receipt
     app_state.savedAt = current_iso(); app_state.confirmedRationale = pending.plan.rationale
@@ -406,19 +431,20 @@ fn verify_pending() {
     app_state.confirmedRisks = pending.plan.risks; app_state.pendingVerification = nil
     app_state.plan = nil; app_state.draftProject = nil; app_state.phase = "confirmed"; app_state.error = ""
     app_state.showingFormal = false
-    commit_business(); busy = false
-    show_status("计划已确认，日历已保存并通过核验"); refresh()
+    let saved = commit_business(); busy = false
+    if saved { show_status("计划已确认，日历已保存并通过核验") }
+    refresh()
 }
 fn confirm_plan() {
     if busy or app_state.plan == nil { return }
     assert(app_state.plan.baseVersion == project.version)
     app_state.pendingVerification = {before: clone_value(project), draft: clone_value(app_state.draftProject),
         plan: clone_value(app_state.plan), target: plan_project(app_state.draftProject, app_state.plan), now: current_iso()}
-    commit_business(); verify_pending()
+    if !commit_business() { busy = false; refresh(); return }
+    verify_pending()
 }
 fn boot() {
     let device = fs.read("device.json").parse_json()
-    app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
     let persisted = load_state()
     if persisted == nil { return }
     let business = persisted.business
@@ -432,13 +458,18 @@ fn boot() {
             app_state.questionId = "initial"; commit_business()
         }
     }
+    # 设备时区属于本机，恢复业务记录之后应用，不被旧记录覆盖。
+    app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
     project = clone_value(app_state.project)
     draft_question = app_state.questionId
     let draft = persisted.draft
+    # 修订号从高于任何旧草稿的基准继续；当前问题没有草稿时也如此，回到
+    # initial 时新输入就不会被早先更大的修订号拒绝。
+    draft_revision = 1000000
     if draft != nil {
-        draft_revision = draft.revision; draft_goal = draft.goal; draft_deadline = draft.deadline; draft_answer = draft.answer
+        draft_revision = max(draft_revision, draft.revision)
+        draft_goal = draft.goal; draft_deadline = draft.deadline; draft_answer = draft.answer
     } else {
-        draft_revision = 0
         draft_goal = if has_field(app_state, "inputGoal") { app_state.inputGoal } else { "" }
         draft_deadline = if has_field(app_state, "inputDeadline") { app_state.inputDeadline } else { date_text(today_epoch() + 7 * 86400) }
         draft_answer = if has_field(app_state, "inputAdvice") { app_state.inputAdvice } else { "" }
