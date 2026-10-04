@@ -47,12 +47,15 @@ let Subtle = Action{draw_bg +: {color: #xffffff color_hover: brand_soft color_do
 let Input = TextInput{height: 40 width: Fill padding: Inset{left: 12 right: 12 top: 8 bottom: 8}
     draw_bg +: {color: #xffffff color_hover: #xf5f7f6 color_focus: #xe8f2ed color_empty: #xffffff border_color: line border_size: 1 border_radius: 8}
     draw_text +: {color: ink color_hover: ink color_focus: ink color_empty: faint color_empty_hover: faint text_style: chinese}}
-let project = {id: "loom-calendar", version: 0, goal: "", deadline: nil, milestones: [], tasks: [], fixedEvents: [],
-    workHours: {start: "09:00", end: "18:00"}, restDays: [5, 6], preferences: "", autoAdjust: false}
-let app_state = {schema: 3, sequence: 0, project: project, draftProject: nil, plan: nil, receipt: nil,
-    pendingVerification: nil, calendar: {}, capacity: nil, agent: nil, activeJob: nil,
-    lastRequest: nil, phase: "idle", error: "", savedAt: "", inputGoal: "", inputDeadline: "",
-    inputAdvice: "", utcOffset: 0, timezone: "", month: 0, selectedDay: 0, showingFormal: false}
+fn default_project() { return {id: "loom-calendar", version: 0, goal: "", deadline: nil, milestones: [], tasks: [], fixedEvents: [],
+    workHours: {start: "09:00", end: "18:00"}, restDays: [5, 6], preferences: "", autoAdjust: false} }
+fn default_state() { return {schema: 3, project: default_project(), draftProject: nil, plan: nil, receipt: nil,
+    pendingVerification: nil, calendar: {}, capacity: nil, formalCapacity: nil, activeJob: nil,
+    lastRequest: nil, phase: "idle", error: "", savedAt: "", confirmedRationale: "", confirmedRisks: [],
+    questionId: "initial", question: "", resumeToken: "", workingProject: nil,
+    utcOffset: 0, timezone: "", month: 0, selectedDay: 0, showingFormal: false} }
+let project = default_project()
+let app_state = default_state()
 let displayed = project
 let busy = false
 let editing_goal = true
@@ -60,6 +63,15 @@ let loaded = false
 let progress_text = ""
 let status_text = "填写目标与截止日期，自动生成每日安排"
 let api_origin = "https://quotes-geographical-per-foreign.trycloudflare.com"
+let state_origin = "{{state}}"
+let business_version = 0
+let draft_question = "initial"
+let draft_revision = 0
+let draft_goal = ""
+let draft_deadline = ""
+let draft_answer = ""
+let draft_promise = nil
+let draft_promise_revision = 0
 
 fn clone_value(value) { return value.to_json().parse_json() }
 fn has_field(value, name) { for key item in value { if "" + key == name { return true } }; return false }
@@ -71,6 +83,19 @@ fn calendar_iso(epoch) {
 fn date_text(epoch) { return calendar_iso(epoch).split("T")[0] }
 fn clock_text(epoch) { let parts = local_time(epoch); return padded(parts.hour) + ":" + padded(parts.minute) }
 fn now_epoch() { return time_now() + app_state.utcOffset * 3600 }
+fn state_error(outcome) {
+    if outcome.failed != "" { return outcome.failed }
+    if outcome.response.status_code >= 400 {
+        let raw = outcome.response.body.to_string().trim()
+        let message = "本地记录请求失败（HTTP " + outcome.response.status_code + "）"
+        if raw.search("{") == 0 {
+            let body = raw.parse_json()
+            if has_field(body, "error") { message = message + "：" + detail_text(body.error) }
+        }
+        return message
+    }
+    return ""
+}
 fn current_iso() { return calendar_iso(now_epoch()) }
 fn today_epoch() { return floor(now_epoch() / 86400) * 86400 }
 fn month_start(epoch) { return floor(epoch / 86400) * 86400 - (local_time(epoch).day - 1) * 86400 }
@@ -108,28 +133,50 @@ fn plan_project(base, approved) {
     result.version = base.version + 1
     return result
 }
-fn read_record(slot) {
-    if !fs.exists(slot) { return nil }
-    let body = fs.read(slot).parse_json()
-    assert(body.payload == body.mirror)
-    let record = body.payload.parse_json()
-    assert(record.schema == 3 and record.sequence == body.sequence)
-    return record
+fn state_request(path, body) {
+    let pending = promise(); let finished = false
+    let timer = start_timeout(30, || {
+        if !finished { finished = true; pending.resolve({failed: "本地记录服务超过等待时间", response: nil}) }
+    })
+    net.http_request(net.HttpRequest{
+        url: state_origin + path method: if body == nil { net.HttpMethod.GET } else { net.HttpMethod.POST }
+        headers: {"Content-Type": "application/json"} body: if body == nil { nil } else { body.to_json().to_bytes() }
+    }) do net.HttpEvents{
+        on_response: |response| {
+            if !finished { finished = true; stop_timer(timer); pending.resolve({failed: "", response: response}) }
+        }
+        on_error: |error| { if !finished { finished = true; stop_timer(timer); pending.resolve({failed: error.message, response: nil}) } }
+    }
+    return pending
 }
-fn newest_record() {
-    let first = read_record("calendar-a.json"); let second = read_record("calendar-b.json")
-    if first == nil { return second }; if second == nil { return first }
-    return if first.sequence >= second.sequence { first } else { second }
+fn load_state() {
+    let outcome = state_request("/v1/state?projectId=" + project.id, nil).await()
+    let error = state_error(outcome)
+    if error != "" { show_status("读取本地记录失败：" + error); return nil }
+    return outcome.response.body.to_string().parse_json()
 }
-fn save_state() {
-    let disk = newest_record(); assert(disk == nil or disk.sequence == app_state.sequence)
-    let next = clone_value(app_state); next.project = clone_value(project); next.sequence = next.sequence + 1
-    let slot = if next.sequence % 2 == 1 { "calendar-a.json" } else { "calendar-b.json" }
-    let payload = next.to_json()
-    assert(fs.write(slot, {sequence: next.sequence, payload: payload, mirror: payload}.to_json()) == nil)
-    let saved = read_record(slot)
-    assert(saved == next)
-    app_state = saved; project = app_state.project
+fn commit_business() {
+    let outcome = state_request("/v1/commit", {projectId: project.id, expectedVersion: business_version, business: clone_value(app_state)}).await()
+    if outcome.failed != "" { show_status("保存业务记录失败：" + outcome.failed); return false }
+    let status = outcome.response.status_code
+    let body = outcome.response.body.to_string().parse_json()
+    if status == 409 {
+        # 版本冲突说明业务记录已被更新；不用旧快照覆盖，停止当前操作。
+        show_status("保存业务记录失败：本地记录已被更新，请重启后再操作")
+        return false
+    }
+    if status >= 400 { show_status("保存业务记录失败：" + state_error(outcome)); return false }
+    business_version = body.version; app_state = clone_value(body.business)
+    return true
+}
+fn save_draft() {
+    if !loaded { return }
+    # 修订号在客户端内单调递增，不因切换问题重置；回到 initial 时新修订号
+    # 仍大于旧草稿，宿主不会拒绝新输入。
+    draft_revision = draft_revision + 1
+    draft_promise_revision = draft_revision
+    draft_promise = state_request("/v1/draft", {projectId: project.id, questionId: draft_question,
+        revision: draft_revision, goal: draft_goal, deadline: draft_deadline, answer: draft_answer})
 }
 fn show_status(text) { status_text = text; ui.status_label.set_text(text); ui.status_label.set_visible(true) }
 fn refresh_actions() { ui.generate_action.render(); ui.revision_action.render() }
@@ -146,21 +193,21 @@ fn refresh() {
 }
 fn input_changed() {
     if !loaded { return }
-    app_state.inputGoal = ui.goal_input.text(); app_state.inputDeadline = ui.deadline_input.text()
-    save_state(); ui.generate_action.render()
+    draft_goal = ui.goal_input.text(); draft_deadline = ui.deadline_input.text()
+    save_draft(); ui.generate_action.render()
 }
 fn advice_changed(text) {
-    if !loaded { return }; app_state.inputAdvice = text; save_state(); ui.revision_action.render()
+    if !loaded { return }; draft_answer = text; save_draft(); ui.revision_action.render()
 }
-fn select_day(epoch) { app_state.selectedDay = epoch; save_state(); ui.calendar_grid.render(); ui.day_detail.render() }
+fn select_day(epoch) { app_state.selectedDay = epoch; ui.calendar_grid.render(); ui.day_detail.render() }
 fn change_month(direction) {
     app_state.month = if direction < 0 { previous_month(app_state.month) } else { next_month(app_state.month) }
     app_state.selectedDay = app_state.month
-    save_state(); ui.month_header.render(); ui.calendar_grid.render(); ui.day_detail.render()
+    ui.month_header.render(); ui.calendar_grid.render(); ui.day_detail.render()
 }
 fn select_today() {
     app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch()
-    save_state(); ui.month_header.render(); ui.calendar_grid.render(); ui.day_detail.render()
+    ui.month_header.render(); ui.calendar_grid.render(); ui.day_detail.render()
 }
 fn day_items(epoch) {
     let rows = []; let day = date_text(epoch)
@@ -225,6 +272,10 @@ fn request_api(path, body) {
     }
     return pending
 }
+fn detail_text(detail) {
+    if detail.is_object() and has_field(detail, "message") { return "" + detail.message }
+    return "" + detail
+}
 fn request_error(outcome) {
     if outcome.failed != "" { return outcome.failed }
     if outcome.response.status_code >= 400 {
@@ -232,7 +283,8 @@ fn request_error(outcome) {
         let message = "服务请求失败（HTTP " + outcome.response.status_code + "）"
         if raw.search("{") == 0 {
             let body = raw.parse_json()
-            if has_field(body, "detail") { message = message + "：" + body.detail }
+            if has_field(body, "detail") { message = message + "：" + detail_text(body.detail) }
+            elif has_field(body, "error") { message = message + "：" + detail_text(body.error) }
         }
         return message
     }
@@ -240,7 +292,8 @@ fn request_error(outcome) {
 }
 fn planning_failed(reason) {
     busy = false; app_state.activeJob = nil; app_state.phase = "failed"; app_state.error = reason
-    save_state(); show_status("本次规划已停止：" + reason); refresh()
+    if commit_business() { show_status("本次规划已停止：" + reason) }
+    refresh()
 }
 fn poll_planning() {
     let started = time_now()
@@ -250,20 +303,33 @@ fn poll_planning() {
         if error != "" { planning_failed(error); return }
         let response = outcome.response.body.to_string().parse_json()
         if response.status == "complete" {
-            busy = false; app_state.activeJob = nil
+            app_state.activeJob = nil
             let result = response.result
-            app_state.agent = result.state; app_state.capacity = result.capacity
+            app_state.capacity = result.capacity
+            let message = ""
             if result.type == "plan" {
                 app_state.plan = result.payload; app_state.draftProject = result.draftProject
                 for key value in result.calendar { app_state.calendar["" + key] = value }
                 app_state.phase = "candidate"; app_state.showingFormal = false; app_state.pendingVerification = nil
-                app_state.error = ""; app_state.inputAdvice = ""; ui.advice_input.set_text("")
-                show_status("候选计划已生成，请查看日历并确认")
+                app_state.error = ""; draft_answer = ""; ui.advice_input.set_text("")
+                app_state.question = ""; app_state.resumeToken = ""; app_state.questionId = "initial"
+                draft_question = "initial"
+                message = "候选计划已生成，请查看日历并确认"
             } elif result.type == "clarify" {
-                app_state.phase = "clarify"; app_state.workingProject = result.draftProject
-                show_status(result.payload.question)
+                app_state.phase = "clarify"
+                app_state.question = result.payload.question
+                app_state.resumeToken = result.resumeToken
+                app_state.questionId = result.resumeToken
+                app_state.workingProject = result.draftProject
+                draft_question = result.resumeToken; draft_answer = ""
+                ui.advice_input.set_text("")
+                message = result.payload.question
             } else { planning_failed(result.payload.reason); return }
-            editing_goal = false; save_state(); refresh(); return
+            editing_goal = false
+            let saved = commit_business()
+            busy = false
+            if saved { show_status(message) }
+            refresh(); return
         }
         assert(response.status == "running")
         progress_text = response.stage; show_status(progress_text); ui.plan_summary.render()
@@ -274,11 +340,15 @@ fn launch_request(request) {
     busy = true; app_state.lastRequest = clone_value(request)
     app_state.phase = if request.trigger == "compose" { "generating" } else { "revising" }
     app_state.error = ""; progress_text = if request.trigger == "compose" { "正在拆分目标" } else { "正在根据建议调整任务和时间" }
-    editing_goal = false; save_state(); show_status(progress_text); refresh()
+    editing_goal = false
+    if !commit_business() { busy = false; refresh(); return }
+    show_status(progress_text); refresh()
     let outcome = request_api("/v1/agent/jobs", request).await()
     let error = request_error(outcome); if error != "" { planning_failed(error); return }
     let response = outcome.response.body.to_string().parse_json()
-    app_state.activeJob = response.jobId; save_state(); poll_planning()
+    app_state.activeJob = response.jobId
+    if !commit_business() { busy = false; refresh(); return }
+    poll_planning()
 }
 fn generate_plan() {
     if busy { return }
@@ -293,8 +363,26 @@ fn revise_plan() {
     if busy { return }
     let advice = ui.advice_input.text().trim(); if advice == "" { return }
     if app_state.phase == "clarify" {
-        launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "", state: app_state.agent,
-            clarificationAnswer: advice, now: current_iso()}); return
+        let attempt = 0
+        while attempt < 3 {
+            let answer = ui.advice_input.text().trim()
+            if answer == "" { show_status("请填写你的回答"); return }
+            draft_answer = answer
+            save_draft()
+            let revision = draft_promise_revision
+            let outcome = draft_promise.await()
+            let error = request_error(outcome)
+            if error != "" { show_status("回答草稿保存失败：" + error); return }
+            let body = outcome.response.body.to_string().parse_json()
+            if !body.applied or body.revision != revision {
+                show_status("回答草稿未保存到最新修订，请稍后重试"); return
+            }
+            # 等待保存期间用户可能继续输入；只有输入与刚保存的修订一致才提交。
+            if ui.advice_input.text().trim() != answer { attempt = attempt + 1; continue }
+            launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "",
+                resumeToken: app_state.resumeToken, clarificationAnswer: answer, now: current_iso()}); return
+        }
+        show_status("回答仍在变化，请停止输入后再次提交"); return
     }
     let snapshot = if app_state.plan != nil { plan_project(app_state.draftProject, app_state.plan) } else { clone_value(project) }
     snapshot.version = project.version
@@ -313,56 +401,88 @@ fn edit_goal() {
     editing_goal = true; input_changed(); refresh()
 }
 fn toggle_view() {
-    app_state.showingFormal = !app_state.showingFormal; save_state(); refresh()
+    app_state.showingFormal = !app_state.showingFormal; refresh()
 }
 fn verify_pending() {
     if busy or app_state.pendingVerification == nil { return }
-    busy = true; app_state.phase = "verifying"; save_state(); show_status("正在保存并核验完整日历"); refresh()
-    let readback = newest_record(); assert(readback != nil)
-    let pending = readback.pendingVerification
+    busy = true; app_state.phase = "verifying"
+    if !commit_business() { busy = false; refresh(); return }
+    show_status("正在保存并核验完整日历"); refresh()
+    let pending = clone_value(app_state.pendingVerification)
     let outcome = request_api("/v1/calendar/verify", {beforeSnapshot: pending.before, draftProject: pending.draft,
         plan: pending.plan, readbackSnapshot: pending.target, now: current_iso()}).await()
     let error = request_error(outcome)
-    busy = false
     if error != "" {
         app_state.phase = "confirm_failed"; app_state.error = error
-        save_state(); show_status("确认核验失败：" + error); refresh(); return
+        let saved = commit_business(); busy = false
+        if saved { show_status("确认核验失败：" + error) }
+        refresh(); return
     }
     let receipt = outcome.response.body.to_string().parse_json()
     if receipt.status != "verified" {
         app_state.phase = "confirm_failed"; app_state.error = receipt.reason
-        save_state(); show_status("计划尚未确认：" + receipt.reason); refresh(); return
+        let saved = commit_business(); busy = false
+        if saved { show_status("计划尚未确认：" + receipt.reason) }
+        refresh(); return
     }
     project = clone_value(pending.target); app_state.project = project; app_state.receipt = receipt
     app_state.savedAt = current_iso(); app_state.confirmedRationale = pending.plan.rationale
     app_state.formalCapacity = clone_value(app_state.capacity)
     app_state.confirmedRisks = pending.plan.risks; app_state.pendingVerification = nil
     app_state.plan = nil; app_state.draftProject = nil; app_state.phase = "confirmed"; app_state.error = ""
-    app_state.showingFormal = false; save_state()
-    assert(newest_record().project == project)
-    show_status("计划已确认，日历已保存并通过核验"); refresh()
+    app_state.showingFormal = false
+    let saved = commit_business(); busy = false
+    if saved { show_status("计划已确认，日历已保存并通过核验") }
+    refresh()
 }
 fn confirm_plan() {
     if busy or app_state.plan == nil { return }
     assert(app_state.plan.baseVersion == project.version)
     app_state.pendingVerification = {before: clone_value(project), draft: clone_value(app_state.draftProject),
         plan: clone_value(app_state.plan), target: plan_project(app_state.draftProject, app_state.plan), now: current_iso()}
-    save_state(); verify_pending()
+    if !commit_business() { busy = false; refresh(); return }
+    verify_pending()
 }
 fn boot() {
     let device = fs.read("device.json").parse_json()
-    let restored = newest_record()
-    if restored != nil { app_state = restored; project = app_state.project }
+    let persisted = load_state()
+    if persisted == nil { return }
+    let business = persisted.business
+    if business == nil {
+        app_state = default_state()
+        business_version = 0
+        commit_business()
+    } else {
+        app_state = clone_value(business); business_version = persisted.version
+        if !has_field(app_state, "questionId") or app_state.questionId == "" {
+            app_state.questionId = "initial"; commit_business()
+        }
+    }
+    # 设备时区属于本机，恢复业务记录之后应用，不被旧记录覆盖。
     app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
+    project = clone_value(app_state.project)
+    draft_question = app_state.questionId
+    let draft = persisted.draft
+    # 修订号从高于任何旧草稿的基准继续；当前问题没有草稿时也如此，回到
+    # initial 时新输入就不会被早先更大的修订号拒绝。
+    draft_revision = 1000000
+    if draft != nil {
+        draft_revision = max(draft_revision, draft.revision)
+        draft_goal = draft.goal; draft_deadline = draft.deadline; draft_answer = draft.answer
+    } else {
+        draft_goal = if has_field(app_state, "inputGoal") { app_state.inputGoal } else { "" }
+        draft_deadline = if has_field(app_state, "inputDeadline") { app_state.inputDeadline } else { date_text(today_epoch() + 7 * 86400) }
+        draft_answer = if has_field(app_state, "inputAdvice") { app_state.inputAdvice } else { "" }
+    }
     if app_state.month == 0 { app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch() }
-    if app_state.inputDeadline == "" { app_state.inputDeadline = date_text(today_epoch() + 7 * 86400) }
-    ui.goal_input.set_text(app_state.inputGoal); ui.deadline_input.set_text(app_state.inputDeadline)
-    ui.advice_input.set_text(app_state.inputAdvice)
+    ui.goal_input.set_text(draft_goal); ui.deadline_input.set_text(draft_deadline)
+    ui.advice_input.set_text(draft_answer)
     ui.timezone_label.set_text("设备时区 · " + app_state.timezone)
     loaded = true; editing_goal = project.goal == "" and app_state.draftProject == nil and app_state.lastRequest == nil
-    if restored != nil { show_status(if app_state.plan != nil { "已恢复候选计划与正式日历" } else { "已恢复本地日历" }) }
     if app_state.pendingVerification != nil { app_state.phase = "confirm_failed"; show_status("候选计划已经保存，请重新确认核验") }
-    save_state(); refresh()
+    elif app_state.plan != nil { show_status("已恢复候选计划与正式日历") }
+    elif project.tasks.len() > 0 { show_status("已恢复本地日历") }
+    refresh()
     if app_state.activeJob != nil { busy = true; progress_text = "正在恢复规划过程"; refresh(); poll_planning() }
     elif app_state.phase == "generating" or app_state.phase == "revising" { planning_failed("规划请求尚未提交，请重新生成") }
 }
@@ -401,7 +521,7 @@ SolidView{width: Fill height: Fill flow: Down draw_bg.color: #xf5f7f6
                             deadline_input := Input{empty_text: "YYYY-MM-DD" on_change: |text| input_changed()}
                         }
                         generate_action := View{width: 140 height: 40 on_render: || {
-                            Action{width: Fill text: "生成计划" enabled: loaded and !busy and app_state.inputGoal.trim() != ""
+                            Action{width: Fill text: "生成计划" enabled: loaded and !busy and draft_goal.trim() != ""
                                 on_click: || generate_plan()}
                         }}
                     }
@@ -533,7 +653,7 @@ SolidView{width: Fill height: Fill flow: Down draw_bg.color: #xf5f7f6
                         } elif app_state.phase == "clarify" {
                             Small{text: "需要补充说明" draw_text.color: purple}
                             Heading{text: "请补充你的选择"}
-                            Text{width: Fill text: app_state.agent.clarification}
+                            Text{width: Fill text: app_state.question}
                         } elif displayed.tasks.len() > 0 {
                             let candidate = app_state.plan != nil and !app_state.showingFormal
                             Small{text: if candidate { "候选计划 · 待确认" } else { "计划已确认" } draw_text.color: if candidate { purple } else { brand }}
@@ -579,7 +699,7 @@ SolidView{width: Fill height: Fill flow: Down draw_bg.color: #xf5f7f6
                         advice_input := Input{height: 116 is_multiline: true empty_text: "例如：把演示文档提前，增加半小时检查时间" on_change: |text| advice_changed(text)}
                         revision_action := View{width: Fill height: 40 on_render: || {
                             Action{width: Fill text: if app_state.phase == "clarify" { "提交回答并继续" } else { "根据建议修改" }
-                                enabled: loaded and !busy and app_state.inputAdvice.trim() != "" on_click: || revise_plan()}
+                                enabled: loaded and !busy and draft_answer.trim() != "" on_click: || revise_plan()}
                         }}
                     }
                 }
