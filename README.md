@@ -38,7 +38,7 @@ python3 -m pytest -q server/tests
 ## 代码与资料
 
 - `bundle/main.splash`：目标入口、真实月历、当天完整安排和计划说明。
-- `bundle/assets/fonts/`：Figma 使用的 Noto Sans SC 与 Manrope 字体及授权文件。
+- `bundle/assets/fonts/`：Figma 使用的 Noto Sans SC 与 Manrope 字体。每个字体的 name table 内嵌完整 OFL 1.1 授权，原始授权文本保存在 `docs/licenses/`。
 - `server/domain/`：项目模型、约束检查、容量计算和日历差异。
 - `server/agent/`：真实模型的工具调用与规划过程。
 - `server/adapters/`：HTTP 服务、MiniMax 连接、使用记录和额度限制。

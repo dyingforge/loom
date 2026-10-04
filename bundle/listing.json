@@ -1,8 +1,9 @@
 {
-  "name": "Loom 目标日历",
+  "schema": 1,
   "subtitle": "填写目标，自动安排每一天",
   "publisher": {
     "name": "Loom Agent",
+    "support": "https://github.com/dyingforge/loom/issues",
     "privacy_policy_url": "https://quotes-geographical-per-foreign.trycloudflare.com/privacy"
   },
   "category": "productivity",
@@ -10,6 +11,6 @@
   "age_rating": "all",
   "description": "填写目标与截止日期，Loom 自动拆分任务并安排到月历。查看每天的完整安排，通过文字建议调整任务与时间，确认并核验后保存正式计划。客户端使用 OctoScript 原生控件，规划由 Python 服务与 MiniMax 完成。",
   "icon": "assets/icon.svg",
-  "screenshots": [],
+  "screenshots": ["screenshots/01-main.png"],
   "keywords": ["project", "calendar", "scheduling", "agent"]
 }

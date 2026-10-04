@@ -4,14 +4,21 @@
 
 验证环境为 macOS Apple Silicon、Python 3.9.6、Rust 1.89，模型为 MiniMax-M2.7。Python 依赖记录在 `requirements.txt`。
 
-| 原生运行环境 | 提交编号 |
-| --- | --- |
-| OctoScript-App-Design-Flow | 本机 `.scratch/native/OctoScript-App-Design-Flow` 中的官方工具 |
-| octoscript-makepad | `cb66de073469063abeb2a5ab2a2bbf3cdb365745` |
-| makepad | `1f3b1dedfbb81424eb8dbf69e5e2c634fa73dc54` |
-| octoscript | `dbd48cfb799551c11e30970c393777d29644a605` |
+| 组件 | 本轮验证所用提交 | 说明 |
+| --- | --- | --- |
+| OctoSense-App-Hub | `e014fa9c596cdbd95de5cf9fb2a6b4fc2b781d17` | `hub check` 与 `card-host` 实机验证所用 |
+| OctoScript-App-Design-Flow | `a5a87d3c3ff305768ae46bc5f6689abb48115cc4` | 本轮阅读的官方文档 |
+| octoscript-makepad | `cb66de073469063abeb2a5ab2a2bbf3cdb365745` | 本机构建 App Hub 时所用运行时 |
+| makepad | `1f3b1dedfbb81424eb8dbf69e5e2c634fa73dc54` | 本机构建 App Hub 时所用运行时 |
+| octoscript | `dbd48cfb799551c11e30970c393777d29644a605` | 本机构建 App Hub 时所用运行时 |
 
-新设备按照官方 OctoScript-App-Design-Flow 的 `docs/QUICKSTART.md` 准备运行环境并构建 `card-host`。默认程序路径为 `.scratch/native/OctoSense-App-Hub/target/release/card-host`，其他路径可通过 `scripts/run_client.py --host` 指定。
+官方最新运行时的锁定提交尚未在本机验证：Design Flow `a5a87d3` 的 `native-runtime.lock.json` 锁定 octoscript-makepad `2cc5ef37d7d6a3d2992673389ce74488f7bb2d87`，后者锁定 makepad `c155f61d` 与 octoscript `5991dfae`。
+
+新设备按照官方 OctoScript-App-Design-Flow 的 `docs/QUICKSTART.md` 准备运行环境并构建 `card-host`。`scripts/run_client.py` 默认使用 `.scratch/native/OctoSense-App-Hub/target/release/card-host`。本机运行新版宿主时，用 `--host` 指向临时检出的最新版：
+
+```sh
+python3 scripts/run_client.py --host .scratch/native/OctoSense-App-Hub-latest/target/release/card-host
+```
 
 在项目根目录的 `.env` 中填写 `MINIMAX_API_KEY`，参考 `.env.example`。启动服务：
 
