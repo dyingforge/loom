@@ -31,11 +31,9 @@ def _env():
 
 
 def _tail(path, lines):
-    try:
-        with path.open("r", errors="replace") as handle:
-            return "".join(deque(handle, maxlen=lines))
-    except OSError:
-        return ""
+    # 日志文件在命令运行前已创建，直接读取末尾内容。
+    with path.open("r", errors="replace") as handle:
+        return "".join(deque(handle, maxlen=lines))
 
 
 def streamed(args, *, cwd=None):
@@ -149,9 +147,12 @@ def verify_bundle(entry):
 
 def check_origin(entry, repo):
     origin = git_query(repo, "remote", "get-url", "origin", check=False)
-    if origin.returncode == 0 and trimmed(origin) != entry["url"]:
+    if origin.returncode != 0:
+        raise SystemExit("{} 缺少 origin，拒绝使用：{}".format(entry["name"], repo))
+    url = trimmed(origin)
+    if url != entry["url"]:
         raise SystemExit(
-            "{} origin 不匹配，拒绝覆盖：{} != {}".format(entry["name"], trimmed(origin), entry["url"])
+            "{} origin 不匹配，拒绝覆盖：{} != {}".format(entry["name"], url, entry["url"])
         )
 
 
