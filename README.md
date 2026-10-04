@@ -13,15 +13,27 @@ python3 scripts/run_dev_server.py
 
 启动前在项目根目录创建 `.env`，参考 `.env.example`，填写 `MINIMAX_API_KEY`。密钥仅由服务端读取。服务监听 `127.0.0.1:8000`，缺少密钥时启动失败。
 
-## 启动客户端
+## 构建并启动客户端
 
-本机已经构建真实 `card-host`。使用以下命令打开应用：
+原生宿主由 `native/LOCK.json` 固定的依赖源码构建。首次使用或依赖更新后运行：
+
+```sh
+python3 scripts/build_native.py
+```
+
+脚本在被 Git 忽略的 `.scratch/native` 中检出四个依赖仓库，从本项目版本管理的 Git 提交包取回 Makepad 与 App Hub 的修复提交，执行 `cargo build --release --locked` 构建 `hub` 和 `card-host`，并在二进制旁写入构建标记。只检查锁定记录、提交包与现有源码而不构建时运行：
+
+```sh
+python3 scripts/build_native.py --verify
+```
+
+构建完成后打开应用：
 
 ```sh
 python3 scripts/run_client.py
 ```
 
-新设备需要按照 `docs/DEMO.md` 中的版本准备 OctoScript 运行环境。客户端通过公开 HTTPS 服务请求模型，域名需要同时出现在 `bundle/main.splash` 的 `api_origin` 和 `bundle/manifest.json` 的 `network.hosts` 中。
+`run_client.py` 会核对构建标记，未按锁定来源构建的旧原生宿主会被拒绝。客户端通过公开 HTTPS 服务请求模型，域名需要同时出现在 `bundle/main.splash` 的 `api_origin` 和 `bundle/manifest.json` 的 `network.hosts` 中。
 
 当前开发连接通过已经运行的 Cloudflare 临时隧道访问本机服务。临时连接在隧道终止后失效，重新启动隧道需要更新上述两个位置。正式演示设备需要保持服务和隧道运行，或者配置持续运行的 HTTPS 服务。
 
