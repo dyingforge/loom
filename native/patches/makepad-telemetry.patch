@@ -1,0 +1,367 @@
+diff --git a/platform/script/src/heap.rs b/platform/script/src/heap.rs
+index c52b1d5b9..10f6bd1c9 100644
+--- a/platform/script/src/heap.rs
++++ b/platform/script/src/heap.rs
+@@ -37,6 +37,10 @@ pub struct ScriptHeapMemoryStats {
+     /// Logical bytes charged since the last collection: the recent-allocation
+     /// signal feeding the collection heuristic.
+     pub allocated_since_gc_bytes: usize,
++    /// Logical bytes charged over the heap's whole life. Monotonic and
++    /// saturating, never reset by a collection, so a host can subtract two
++    /// reads taken around one entry even when a collection runs in between.
++    pub allocated_total_bytes: usize,
+     /// Number of completed mark/sweep collections.
+     pub collections: usize,
+     /// Number of cleared `String` buffers parked for reuse.
+@@ -148,6 +152,9 @@ pub struct ScriptHeap {
+     /// Logical bytes charged since the last collection. A cheap
+     /// recent-allocation signal for the collection heuristic.
+     pub(crate) allocated_since_gc_bytes: usize,
++    /// Logical bytes charged over the heap's whole life. Monotonic and
++    /// saturating, so a collection never hides an entry's allocation total.
++    pub(crate) allocated_total_bytes: usize,
+     /// Completed mark/sweep collections, for host-visible statistics.
+     pub(crate) gc_count: usize,
+     /// Per-string construction ceiling (logical bytes of one script string).
+@@ -220,6 +227,9 @@ pub(crate) fn charge_allocation(&mut self, bytes: usize, operation: &'static str
+         // they cannot preflight an exact size; it is not real payload.
+         if bytes != usize::MAX {
+             self.allocated_since_gc_bytes = self.allocated_since_gc_bytes.saturating_add(bytes);
++            // The lifetime total never clears, so a host watching one entry
++            // can still measure its allocation across an in-between sweep.
++            self.allocated_total_bytes = self.allocated_total_bytes.saturating_add(bytes);
+         }
+         true
+     }
+@@ -317,6 +327,7 @@ pub fn memory_stats(&self) -> ScriptHeapMemoryStats {
+         ScriptHeapMemoryStats {
+             retained_bytes: self.accounted_heap_bytes(),
+             allocated_since_gc_bytes: self.allocated_since_gc_bytes,
++            allocated_total_bytes: self.allocated_total_bytes,
+             collections: self.gc_count,
+             reuse_buffers: self.strings_reuse.len(),
+             reuse_bytes: self.strings_reuse.iter().map(String::capacity).sum(),
+@@ -1781,6 +1792,30 @@ fn needs_gc_triggers_on_byte_occupancy_and_recent_allocation() {
+         assert_eq!(heap.memory_stats().allocated_since_gc_bytes, 0);
+     }
+ 
++    #[test]
++    fn allocated_total_bytes_is_monotonic_across_collections() {
++        let mut heap = ScriptHeap::empty();
++        // Building the module namespace already charged the heap.
++        let start = heap.memory_stats().allocated_total_bytes;
++        assert!(start > 0);
++
++        assert!(heap.charge_allocation(1000, "test charge"));
++        assert_eq!(heap.memory_stats().allocated_total_bytes, start + 1000);
++
++        // A collection clears the since-GC signal but never the lifetime total.
++        heap.sweep(false);
++        let after_gc = heap.memory_stats();
++        assert_eq!(after_gc.allocated_since_gc_bytes, 0);
++        assert_eq!(after_gc.allocated_total_bytes, start + 1000);
++
++        assert!(heap.charge_allocation(24, "test charge"));
++        assert_eq!(heap.memory_stats().allocated_total_bytes, start + 1024);
++
++        // `usize::MAX` is the refusal sentinel, not payload.
++        assert!(heap.charge_allocation(usize::MAX, "sentinel"));
++        assert_eq!(heap.memory_stats().allocated_total_bytes, start + 1024);
++    }
++
+     #[test]
+     fn memory_stats_track_a_capped_vm() {
+         let mut host = ScriptVmHost::new((), ());
+diff --git a/widgets/src/widget_async.rs b/widgets/src/widget_async.rs
+index 8bdbdf0ef..bc316e7dd 100644
+--- a/widgets/src/widget_async.rs
++++ b/widgets/src/widget_async.rs
+@@ -1,5 +1,6 @@
+ use {
+     crate::makepad_draw::*,
++    crate::makepad_draw::makepad_platform::makepad_script::heap::ScriptHeapMemoryStats,
+     crate::makepad_draw::makepad_platform::script::std::ScriptStd,
+     crate::makepad_draw::makepad_platform::script::timer::CxScriptTimer,
+     crate::makepad_script::{script_err_not_found, ScriptFnRef, ScriptThreadId},
+@@ -437,10 +438,8 @@ fn with_isolate_installed<R>(cx: &mut Cx, vm_id: SplashVmId, f: impl FnOnce(&mut
+     let outer_std = std::mem::replace(&mut cx.script_data.std, isolated.std);
+     let outer_vm = cx.script_vm.take();
+     cx.script_vm = isolated.vm.take();
+-    let before_stats = cx.script_vm.as_ref().map(|bx| {
+-        let stats = bx.heap.memory_stats();
+-        (stats.reuse_buffers, stats.collections)
+-    });
++    let before_telemetry = cx.script_vm.as_ref().map(|bx| bx.heap.memory_stats());
++    let before_stats = before_telemetry.map(|stats| (stats.reuse_buffers, stats.collections));
+ 
+     // Whether `f` returns or unwinds, the isolate goes back into the table
+     // and the outer VM back onto `Cx`: a panic caught above this frame (a
+@@ -457,6 +456,13 @@ fn with_isolate_installed<R>(cx: &mut Cx, vm_id: SplashVmId, f: impl FnOnce(&mut
+     // isolate off `Cx` and nothing of its running, its heap can be read for
+     // the retained-cap refusal the interpreter has just bailed on.
+     record_splash_heap_overflow(cx, vm_id, &mut isolated, before_stats);
++    // Telemetry only reads the parked heap's counters; the isolate is off
++    // `Cx` here and no script runs. A disabled run writes nothing.
++    if let Some(before) = before_telemetry {
++        if let Some(after) = isolated.vm.as_ref().map(|bx| bx.heap.memory_stats()) {
++            log_memory_telemetry(vm_id, before, after);
++        }
++    }
+     cx.global::<CxWidgetAsync>()
+         .isolated_vms
+         .vms
+@@ -553,6 +559,46 @@ fn splash_vm_stopped(cx: &mut Cx, vm_id: SplashVmId) -> bool {
+     cx.global::<CxWidgetAsync>().terminated.contains_key(&vm_id)
+ }
+ 
++/// Whether the host asked for per-entry memory telemetry. Off by default, so
++/// a normal run logs nothing.
++fn memory_telemetry_enabled() -> bool {
++    #[cfg(not(target_arch = "wasm32"))]
++    {
++        std::env::var("LOOM_MEMORY_TELEMETRY").as_deref() == Ok("1")
++    }
++    #[cfg(target_arch = "wasm32")]
++    {
++        false
++    }
++}
++
++/// The one structured line a telemetry entry writes: VM id and the heap's own
++/// counters, numbers only. It never carries script values, user input, resume
++/// tokens or network bodies.
++fn memory_telemetry_json(vm_id: SplashVmId, before: ScriptHeapMemoryStats, after: ScriptHeapMemoryStats) -> String {
++    let allocated = after.allocated_total_bytes.saturating_sub(before.allocated_total_bytes);
++    format!(
++        "{{\"kind\":\"loom.memory.entry\",\"vm\":{},\"retainedBefore\":{},\"retainedAfter\":{},\"allocatedBytes\":{},\"collectionsBefore\":{},\"collectionsAfter\":{},\"reuseBuffersBefore\":{},\"reuseBuffersAfter\":{},\"reuseBytesBefore\":{},\"reuseBytesAfter\":{}}}",
++        vm_id.0,
++        before.retained_bytes,
++        after.retained_bytes,
++        allocated,
++        before.collections,
++        after.collections,
++        before.reuse_buffers,
++        after.reuse_buffers,
++        before.reuse_bytes,
++        after.reuse_bytes,
++    )
++}
++
++/// Write one telemetry line when the host opted in. Cheap no-op when it did not.
++fn log_memory_telemetry(vm_id: SplashVmId, before: ScriptHeapMemoryStats, after: ScriptHeapMemoryStats) {
++    if memory_telemetry_enabled() {
++        crate::makepad_platform::log!("{}", memory_telemetry_json(vm_id, before, after));
++    }
++}
++
+ /// Runs isolate-side work and CONTAINS any panic it raises: the host app must
+ /// survive anything a mini-app isolate does. Returns false when a panic was
+ /// contained; the isolate is left degraded (a Force Stop cleans it up).
+@@ -2181,6 +2227,207 @@ fn a_callback_reached_during_a_draw_runs_under_the_time_budget() {
+     }
+ }
+ 
++#[cfg(test)]
++mod memory_telemetry_tests {
++    use super::*;
++    use crate::makepad_platform::log::{set_log_tap, LogLevel};
++    use std::sync::Mutex;
++
++    /// The tests below touch the process-wide gate and tap; run them one at a
++    /// time so none sees another's environment or captured lines.
++    static LOCK: Mutex<()> = Mutex::new(());
++    static CAPTURED: Mutex<Vec<String>> = Mutex::new(Vec::new());
++
++    fn capture(message: &str, _level: LogLevel) {
++        CAPTURED.lock().unwrap().push(message.to_string());
++    }
++
++    fn telemetry_lines() -> Vec<String> {
++        CAPTURED
++            .lock()
++            .unwrap()
++            .iter()
++            .filter(|line| line.contains("\"kind\":\"loom.memory.entry\""))
++            .cloned()
++            .collect()
++    }
++
++    fn field(line: &str, name: &str) -> u64 {
++        let marker = format!("\"{name}\":");
++        let start = line.find(&marker).expect("telemetry field") + marker.len();
++        let rest = &line[start..];
++        let end = rest
++            .find(|c: char| !c.is_ascii_digit())
++            .unwrap_or(rest.len());
++        rest[..end].parse().expect("telemetry number")
++    }
++
++    /// A few input-style string concatenations, so the entry allocates a real
++    /// amount and leaves the reuse pool with work to do.
++    fn allocate_probe_strings(vm: &mut ScriptVm) {
++        vm.eval(crate::makepad_script::script! {
++            let s = ""
++            for i in 0..40 { s = s + "xxxxxxxxxx" }
++            s
++        });
++    }
++
++    /// The projection is pure: the numbers in, the same numbers out.
++    #[test]
++    fn telemetry_json_reports_the_interval() {
++        let before = ScriptHeapMemoryStats {
++            retained_bytes: 4096,
++            allocated_total_bytes: 1000,
++            collections: 2,
++            reuse_buffers: 3,
++            reuse_bytes: 96,
++            ..Default::default()
++        };
++        let after = ScriptHeapMemoryStats {
++            retained_bytes: 5120,
++            allocated_total_bytes: 1750,
++            collections: 3,
++            reuse_buffers: 4,
++            reuse_bytes: 128,
++            ..Default::default()
++        };
++        let line = memory_telemetry_json(SplashVmId(7), before, after);
++        assert_eq!(field(&line, "vm"), 7, "{line}");
++        assert_eq!(field(&line, "retainedBefore"), 4096, "{line}");
++        assert_eq!(field(&line, "retainedAfter"), 5120, "{line}");
++        assert_eq!(field(&line, "allocatedBytes"), 750, "{line}");
++        assert_eq!(field(&line, "collectionsBefore"), 2, "{line}");
++        assert_eq!(field(&line, "collectionsAfter"), 3, "{line}");
++        assert_eq!(field(&line, "reuseBuffersBefore"), 3, "{line}");
++        assert_eq!(field(&line, "reuseBuffersAfter"), 4, "{line}");
++        assert_eq!(field(&line, "reuseBytesBefore"), 96, "{line}");
++        assert_eq!(field(&line, "reuseBytesAfter"), 128, "{line}");
++    }
++
++    /// The gate is exactly the host's environment variable.
++    #[test]
++    fn telemetry_gate_follows_the_environment() {
++        let _guard = LOCK.lock().unwrap();
++        std::env::remove_var("LOOM_MEMORY_TELEMETRY");
++        assert!(!memory_telemetry_enabled());
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "1");
++        assert!(memory_telemetry_enabled());
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "0");
++        assert!(!memory_telemetry_enabled());
++        std::env::remove_var("LOOM_MEMORY_TELEMETRY");
++    }
++
++    /// Disabled entries write nothing; an enabled entry writes one line with
++    /// the VM id and real allocation counters.
++    #[test]
++    fn telemetry_logs_one_line_per_enabled_entry() {
++        let _guard = LOCK.lock().unwrap();
++        CAPTURED.lock().unwrap().clear();
++        set_log_tap(Some(capture));
++
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        cx.with_vm(crate::script_mod);
++        let vm_id = cx.alloc_splash_vm();
++
++        std::env::remove_var("LOOM_MEMORY_TELEMETRY");
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        assert!(telemetry_lines().is_empty(), "disabled writes nothing");
++
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "1");
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        let lines = telemetry_lines();
++        assert!(!lines.is_empty(), "an enabled entry writes a line");
++        assert!(
++            lines.iter().any(|line| line.contains(&format!("\"vm\":{}", vm_id.0))),
++            "{lines:?}"
++        );
++        assert!(
++            lines.iter().any(|line| field(line, "allocatedBytes") > 0),
++            "{lines:?}"
++        );
++        std::env::remove_var("LOOM_MEMORY_TELEMETRY");
++
++        set_log_tap(None);
++        cx.free_splash_vm(vm_id);
++    }
++
++    /// A collection between two entries must not hide the second's allocation
++    /// delta: the lifetime counter survives the sweep.
++    #[test]
++    fn telemetry_measures_allocation_across_a_collection() {
++        let _guard = LOCK.lock().unwrap();
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        cx.with_vm(crate::script_mod);
++        let vm_id = cx.alloc_splash_vm();
++
++        let before =
++            cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.memory_stats().allocated_total_bytes);
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        let after_first =
++            cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.memory_stats().allocated_total_bytes);
++        assert!(after_first > before, "the loop charged bytes");
++
++        cx.with_script_vm_id(vm_id, |vm| vm.gc());
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        let after_second =
++            cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.memory_stats().allocated_total_bytes);
++        assert!(
++            after_second > after_first,
++            "the lifetime total did not reset at the collection"
++        );
++
++        cx.free_splash_vm(vm_id);
++    }
++
++    /// A real `Splash` body that builds a growing string is one telemetry entry
++    /// with a real allocation delta.
++    #[test]
++    fn telemetry_records_a_splash_string_entry() {
++        use crate::widget_tree::set_ui_root;
++
++        let _guard = LOCK.lock().unwrap();
++        CAPTURED.lock().unwrap().clear();
++        set_log_tap(Some(capture));
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "1");
++
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        let template = cx.with_vm(|vm| {
++            crate::script_mod(vm);
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                use mod.widgets.*
++                View{ splash := Splash{} }
++            });
++            let obj = v.as_object().expect("template did not eval to an object");
++            vm.bx.heap.new_object_ref(obj)
++        });
++        let pane = cx.with_vm(|vm| {
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                View{ height: Fit }
++            });
++            WidgetRef::script_from_value(vm, v)
++        });
++        set_ui_root(&mut cx, &pane);
++        let host = cx.with_vm(|vm| WidgetRef::script_from_value(vm, template.as_object().into()));
++        cx.widget_tree_insert_child_deep(pane.widget_uid(), live_id!(apphost), host.clone());
++        let splash = host.widget(&cx, &[live_id!(splash)]);
++        splash.set_text(
++            &mut cx,
++            "let s = \"\"\nfor i in 0..40 { s = s + \"xxxxxxxxxx\" }\nLabel{text: s}",
++        );
++
++        let lines = telemetry_lines();
++        assert!(!lines.is_empty(), "a Splash entry writes telemetry");
++        assert!(
++            lines.iter().any(|line| field(line, "allocatedBytes") > 0),
++            "{lines:?}"
++        );
++        std::env::remove_var("LOOM_MEMORY_TELEMETRY");
++        set_log_tap(None);
++    }
++}
++
+ #[cfg(test)]
+ mod isolate_tests {
+     use super::*;
