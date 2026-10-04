@@ -72,7 +72,7 @@ index c52b1d5b9..8baed1d6e 100644
      fn memory_stats_track_a_capped_vm() {
          let mut host = ScriptVmHost::new((), ());
 diff --git a/widgets/src/widget_async.rs b/widgets/src/widget_async.rs
-index 8bdbdf0ef..b7bed628c 100644
+index 8bdbdf0ef..0c9bc096f 100644
 --- a/widgets/src/widget_async.rs
 +++ b/widgets/src/widget_async.rs
 @@ -1,5 +1,6 @@
@@ -155,7 +155,7 @@ index 8bdbdf0ef..b7bed628c 100644
  /// Runs isolate-side work and CONTAINS any panic it raises: the host app must
  /// survive anything a mini-app isolate does. Returns false when a panic was
  /// contained; the isolate is left degraded (a Force Stop cleans it up).
-@@ -2181,6 +2226,212 @@ fn a_callback_reached_during_a_draw_runs_under_the_time_budget() {
+@@ -2181,6 +2226,211 @@ fn a_callback_reached_during_a_draw_runs_under_the_time_budget() {
      }
  }
  
@@ -178,13 +178,14 @@ index 8bdbdf0ef..b7bed628c 100644
 +    /// 恢复原值，即使测试失败也不会影响后续测试。
 +    struct CaptureGuard {
 +        _lock: MutexGuard<'static, ()>,
-+        previous: Option<String>,
++        previous: Option<std::ffi::OsString>,
 +    }
 +
 +    impl CaptureGuard {
 +        fn enter() -> CaptureGuard {
 +            let lock = LOCK.lock().unwrap();
-+            let previous = std::env::var("LOOM_MEMORY_TELEMETRY").ok();
++            // 用 var_os 保存原值，非 Unicode 的内容也能原样恢复。
++            let previous = std::env::var_os("LOOM_MEMORY_TELEMETRY");
 +            CAPTURED.lock().unwrap().clear();
 +            set_log_tap(Some(capture));
 +            CaptureGuard { _lock: lock, previous }
@@ -201,16 +202,14 @@ index 8bdbdf0ef..b7bed628c 100644
 +        }
 +    }
 +
-+    /// 已捕获的遥测行，用 serde_json 解析而不是手动截取字符串。
++    /// 先按标记识别遥测日志行，再用 serde_json 解析；格式错误直接让测试失败。
 +    fn telemetry_lines() -> Vec<serde_json::Value> {
 +        CAPTURED
 +            .lock()
 +            .unwrap()
 +            .iter()
-+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-+            .filter(|value| {
-+                value.get("kind").and_then(|kind| kind.as_str()) == Some("loom.memory.entry")
-+            })
++            .filter(|line| line.contains("\"kind\":\"loom.memory.entry\""))
++            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("遥测 JSON 合法"))
 +            .collect()
 +    }
 +
