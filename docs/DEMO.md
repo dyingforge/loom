@@ -6,7 +6,7 @@
 
 | 组件 | 固定上游提交 | 本轮修复提交 |
 | --- | --- | --- |
-| Makepad | `c155f61d0e1600d2ec474209374444a38a09a470` | `6b2b1dfe30a44e4f74da2b27533f703657d2f6b7` |
+| Makepad | `c155f61d0e1600d2ec474209374444a38a09a470` | `08f0e08aa7873b7ce1a633f86185a52be63a017d` |
 | OctoSense-App-Hub | `e014fa9c596cdbd95de5cf9fb2a6b4fc2b781d17` | `3599b69909898a76cbc454077ef552dc543ddeb4` |
 | octoscript-makepad | `2cc5ef37d7d6a3d2992673389ce74488f7bb2d87` | 同上游 |
 | octoscript | `5991dfae9344589e732b2605b530f788e8bbcd11` | 同上游 |
@@ -45,6 +45,16 @@ python3 scripts/run_client.py
 ```
 
 启动窗口为 1440×1000，默认数据目录为 `.local-state/calendar`。启动器读取设备时区。新日历使用独立的保存格式，从空白月历开始。
+
+### 内存统计诊断
+
+隔离脚本的内存统计默认关闭。需要时在启动命令前设置 `LOOM_MEMORY_TELEMETRY=1`：
+
+```sh
+LOOM_MEMORY_TELEMETRY=1 python3 scripts/run_client.py
+```
+
+每次隔离脚本入口（一次求值、回调或绘制）向 `<数据目录>/card-host.log` 写一条结构化 JSON，默认路径为 `.local-state/calendar/card-host.log`。字段含义：`kind` 固定为 `loom.memory.entry`；`vm` 是隔离 VM 标识；`retainedBefore`/`retainedAfter` 是入口前后堆的保留字节估算；`allocatedBytes` 是本次入口实际计费的字节数（累计分配值的前后差值，跨回收仍然准确）；`collectionsBefore`/`collectionsAfter` 是前后完成的回收次数；`reuseBuffersBefore`/`reuseBuffersAfter` 与 `reuseBytesBefore`/`reuseBytesAfter` 是前后字符串复用缓冲区的数量与总容量。诊断只记录数字，不记录脚本值、用户输入、恢复凭据或网络正文；未设置该变量时不写日志，脚本时间预算与超限终止行为不变。
 
 ## 演示操作
 
