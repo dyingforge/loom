@@ -4,15 +4,24 @@
 
 验证环境为 macOS Apple Silicon、Python 3.9.6、Rust 1.89，模型为 MiniMax-M2.7。Python 依赖记录在 `requirements.txt`。
 
-| 组件 | 本轮验证所用提交 |
-| --- | --- |
-| OctoSense-App-Hub | `e014fa9c596cdbd95de5cf9fb2a6b4fc2b781d17` |
-| OctoScript-App-Design-Flow | `a5a87d3c3ff305768ae46bc5f6689abb48115cc4` |
-| octoscript-makepad | `2cc5ef37d7d6a3d2992673389ce74488f7bb2d87` |
-| makepad | `c155f61d0e1600d2ec474209374444a38a09a470` |
-| octoscript | `5991dfae9344589e732b2605b530f788e8bbcd11` |
+| 组件 | 固定上游提交 | 本轮修复提交 |
+| --- | --- | --- |
+| Makepad | `c155f61d0e1600d2ec474209374444a38a09a470` | `6b2b1dfe30a44e4f74da2b27533f703657d2f6b7` |
+| OctoSense-App-Hub | `e014fa9c596cdbd95de5cf9fb2a6b4fc2b781d17` | `3599b69909898a76cbc454077ef552dc543ddeb4` |
+| octoscript-makepad | `2cc5ef37d7d6a3d2992673389ce74488f7bb2d87` | 同上游 |
+| octoscript | `5991dfae9344589e732b2605b530f788e8bbcd11` | 同上游 |
+| OctoScript-App-Design-Flow | `a5a87d3c3ff305768ae46bc5f6689abb48115cc4` | 同上游 |
 
-新设备按照官方 OctoScript-App-Design-Flow 的 `docs/QUICKSTART.md` 准备运行环境并构建 `hub` 与 `card-host`。本机的默认客户端路径为 `.scratch/native/OctoSense-App-Hub/target/release/card-host`，使用 `python3 scripts/run_client.py` 启动。
+`native/LOCK.json` 是这些来源的唯一记录，包含官方地址、提交包校验值、补丁顺序与构建命令。按固定来源准备并构建原生宿主：
+
+```sh
+python3 scripts/build_native.py
+python3 scripts/build_native.py --verify   # 只验证锁定记录、提交包与现有源码，不构建
+```
+
+脚本在被 Git 忽略的 `.scratch/native` 中检出固定源码；Makepad 与 App Hub 的修复提交从 `native/bundles/` 中的 Git 提交包取回，不使用 `git apply` 改写依赖源码。构建产物位于 `.scratch/native/OctoSense-App-Hub/target/release/`。
+
+新设备先按官方 OctoScript-App-Design-Flow 的 `docs/QUICKSTART.md` 准备 Rust 与系统依赖，然后运行 `python3 scripts/build_native.py`。本机的默认客户端路径为 `.scratch/native/OctoSense-App-Hub/target/release/card-host`，使用 `python3 scripts/run_client.py` 启动；`run_client.py` 会拒绝未按锁定来源构建的宿主。
 
 在项目根目录的 `.env` 中填写 `MINIMAX_API_KEY`，参考 `.env.example`。启动服务：
 

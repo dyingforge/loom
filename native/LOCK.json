@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "client": {
+    "prepare": "python3 scripts/build_native.py",
+    "cargo": "cargo build --release --locked -p octosense-card-host -p octosense-app-hub",
+    "binaries": [
+      "hub",
+      "card-host"
+    ]
+  },
+  "repositories": [
+    {
+      "name": "makepad",
+      "url": "https://github.com/OctoSense-org/makepad.git",
+      "checkout": ".scratch/native/makepad",
+      "upstream": "c155f61d0e1600d2ec474209374444a38a09a470",
+      "fix": "6b2b1dfe30a44e4f74da2b27533f703657d2f6b7",
+      "bundle": "native/bundles/makepad.bundle",
+      "bundle_ref": "refs/loom-bundle/makepad",
+      "bundle_sha256": "726868f7853d984a3d197b048ed8353a449b7e8cb0baf8e155c1f0ffd3485360",
+      "patches": [
+        "native/patches/makepad-memory.patch",
+        "native/patches/makepad-terminate.patch"
+      ]
+    },
+    {
+      "name": "OctoSense-App-Hub",
+      "url": "https://github.com/OctoSense-org/OctoSense-App-Hub.git",
+      "checkout": ".scratch/native/OctoSense-App-Hub",
+      "upstream": "e014fa9c596cdbd95de5cf9fb2a6b4fc2b781d17",
+      "fix": "3599b69909898a76cbc454077ef552dc543ddeb4",
+      "bundle": "native/bundles/app-hub.bundle",
+      "bundle_ref": "refs/loom-bundle/app-hub",
+      "bundle_sha256": "e0f2476a857030f526f75f504dfc283553e4901e80df3e2dda55b67de9a559b9",
+      "patches": [
+        "native/patches/app-hub-state.patch"
+      ]
+    },
+    {
+      "name": "Octoscript-Makepad",
+      "url": "https://github.com/OctoSense-org/Octoscript-Makepad.git",
+      "checkout": ".scratch/native/octoscript-makepad",
+      "upstream": "2cc5ef37d7d6a3d2992673389ce74488f7bb2d87",
+      "fix": "2cc5ef37d7d6a3d2992673389ce74488f7bb2d87",
+      "bundle": null,
+      "bundle_ref": null,
+      "bundle_sha256": null,
+      "patches": []
+    },
+    {
+      "name": "Octoscript",
+      "url": "https://github.com/OctoSense-org/Octoscript.git",
+      "checkout": ".scratch/native/octoscript",
+      "upstream": "5991dfae9344589e732b2605b530f788e8bbcd11",
+      "fix": "5991dfae9344589e732b2605b530f788e8bbcd11",
+      "bundle": null,
+      "bundle_ref": null,
+      "bundle_sha256": null,
+      "patches": []
+    }
+  ]
+}
