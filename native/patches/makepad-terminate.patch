@@ -1,5 +1,5 @@
 diff --git a/widgets/src/splash.rs b/widgets/src/splash.rs
-index ac1ebe84e..622dae1c2 100644
+index ac1ebe84e..2513ace83 100644
 --- a/widgets/src/splash.rs
 +++ b/widgets/src/splash.rs
 @@ -85,6 +85,10 @@ pub struct Splash {
@@ -124,7 +124,7 @@ index ac1ebe84e..622dae1c2 100644
                  cx.redraw_all();
              } else if needs_frame_anim {
                  self.view.redraw(cx);
-@@ -666,15 +744,34 @@ fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
+@@ -666,15 +744,30 @@ fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
              self.anim_next_frame = cx.new_next_frame();
          }
          self.view.handle_event(cx, event, scope);
@@ -147,17 +147,13 @@ index ac1ebe84e..622dae1c2 100644
 +                return DrawStep::done();
 +            }
 +        }
-+        // The view runs isolate script as it draws (shader compilation, a
-+        // lazily created child). Keep the isolate installed on the context
-+        // for the pass and read the boundary for a refusal as soon as it
-+        // returns, so the host shows the error in this same frame.
-+        let step = if self.vm_id != MAIN_SPLASH_VM_ID {
-+            crate::widget_async::with_isolate(cx, self.vm_id, |cx| {
-+                self.view.draw_walk(cx, scope, walk)
-+            })
-+        } else {
-+            self.view.draw_walk(cx, scope, walk)
-+        };
++        // Draw exactly as before: the view's own script entries install the
++        // isolate themselves, each under its own time budget, and record a
++        // refusal at that boundary. Read the boundary once here so a refusal
++        // that landed during the pass is shown in this same frame — without
++        // pre-installing the isolate, which would make those nested entries
++        // skip their budget.
++        let step = self.view.draw_walk(cx, scope, walk);
 +        if self.memory_stopped(cx) {
 +            return DrawStep::done();
 +        }
@@ -165,7 +161,7 @@ index ac1ebe84e..622dae1c2 100644
      }
  
      fn text(&self) -> String {
-@@ -682,6 +779,11 @@ fn text(&self) -> String {
+@@ -682,6 +775,11 @@ fn text(&self) -> String {
      }
  
      fn set_text(&mut self, cx: &mut Cx, v: &str) {
@@ -177,7 +173,7 @@ index ac1ebe84e..622dae1c2 100644
          if self.body.as_ref() != v {
              self.body.set(v);
              // Empty body = tear down the app: reclaim its isolate (stopping its
-@@ -692,6 +794,7 @@ fn set_text(&mut self, cx: &mut Cx, v: &str) {
+@@ -692,6 +790,7 @@ fn set_text(&mut self, cx: &mut Cx, v: &str) {
                  self.stop(cx);
              } else {
                  self.eval_body(cx);
@@ -185,7 +181,7 @@ index ac1ebe84e..622dae1c2 100644
              }
              self.redraw(cx);
          }
-@@ -732,6 +835,7 @@ pub fn call_script_fn(&mut self, cx: &mut Cx, name: LiveId, args: &[ScriptValue]
+@@ -732,6 +831,7 @@ pub fn call_script_fn(&mut self, cx: &mut Cx, name: LiveId, args: &[ScriptValue]
              true
          });
          });
@@ -193,7 +189,7 @@ index ac1ebe84e..622dae1c2 100644
          called
      }
  
-@@ -765,9 +869,15 @@ pub fn call_script_fn_with_strings(&mut self, cx: &mut Cx, name: LiveId, args: &
+@@ -765,9 +865,15 @@ pub fn call_script_fn_with_strings(&mut self, cx: &mut Cx, name: LiveId, args: &
              true
          });
          });
@@ -209,7 +205,7 @@ index ac1ebe84e..622dae1c2 100644
      /// Sets whether this Splash's isolate gets the networking runtime. Must be
      /// called before the body is first evaluated (i.e. before `set_text`) — the
      /// VM is allocated with or without network on that first eval and isn't
-@@ -957,6 +1067,9 @@ pub fn set_text(&self, cx: &mut Cx, v: &str) {
+@@ -957,6 +1063,9 @@ pub fn set_text(&self, cx: &mut Cx, v: &str) {
      /// Use set_text("") to tear down the instance and revoke its callbacks.
      pub fn reapply_text(&self, cx: &mut Cx, body: &str) {
          if let Some(mut inner) = self.borrow_mut() {
@@ -219,7 +215,7 @@ index ac1ebe84e..622dae1c2 100644
              if inner.vm_id == MAIN_SPLASH_VM_ID || body.is_empty() {
                  inner.set_text(cx, body);
              } else if inner.body.as_ref() != body {
-@@ -6002,3 +6115,167 @@ fn a_policed_isolate_needs_grants_for_location_the_users_lists_and_the_agent() {
+@@ -6002,3 +6111,167 @@ fn a_policed_isolate_needs_grants_for_location_the_users_lists_and_the_agent() {
          cx.free_splash_vm(vm_id);
      }
  }
@@ -505,7 +501,7 @@ index 04cf78b36..076e936e2 100644
      fn gc_forgets_a_heap_entirely() {
          set_policy_for_heap(906, vec![], vec![], Some(1));
 diff --git a/widgets/src/widget_async.rs b/widgets/src/widget_async.rs
-index d2f22abeb..a3265afb1 100644
+index d2f22abeb..8bdbdf0ef 100644
 --- a/widgets/src/widget_async.rs
 +++ b/widgets/src/widget_async.rs
 @@ -238,6 +238,7 @@ pub fn gc_dead_splash_isolates(cx: &mut Cx) {
@@ -747,7 +743,36 @@ index d2f22abeb..a3265afb1 100644
      match out {
          Ok(out) => out,
          Err(payload) => std::panic::resume_unwind(payload),
-@@ -2480,4 +2628,112 @@ fn show(){ ui.out.set_text("read: " + ui.entry.text()) }
+@@ -2009,6 +2157,28 @@ fn entering_an_isolate_makes_it_the_current_vm_and_leaving_restores_the_outer_on
+         leave_isolate(&mut cx, entry);
+         cx.free_splash_vm(vm_id);
+     }
++
++    /// What a widget callback reached during `Splash::draw_walk` sees when the
++    /// draw does not pre-install the isolate: `with_script_vm_id` installs it
++    /// under `with_splash_budget`, so a runaway callback is stopped on time.
++    /// A regression that pre-installs the isolate for the whole draw takes the
++    /// already-current path and silently drops that budget.
++    #[test]
++    fn a_callback_reached_during_a_draw_runs_under_the_time_budget() {
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        cx.with_vm(crate::script_mod);
++        let vm_id = cx.alloc_splash_vm();
++        let stopped = cx.with_script_vm_id(vm_id, |vm| {
++            let value = vm.eval(crate::makepad_script::script! {
++                let total = 0
++                for i in 0..100000000 { total = total + 1 }
++                total
++            });
++            value.is_err()
++        });
++        assert!(stopped, "the time budget stops a runaway callback");
++        cx.free_splash_vm(vm_id);
++    }
+ }
+ 
+ #[cfg(test)]
+@@ -2480,4 +2650,112 @@ fn show(){ ui.out.set_text("read: " + ui.entry.text()) }
          pump_widget_async(&mut cx);
          assert_eq!(out_text(&out), "echo: yo");
      }
