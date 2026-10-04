@@ -112,6 +112,32 @@ def test_verification_checks_calendar_constraints():
     assert verify_calendar(formal, draft, plan, readback, NOW).status == "not_verified"
 
 
+def test_display_response_returns_only_presentation_fields():
+    from server.adapters.http import display_response
+
+    state = State(project=project(), now=NOW, trigger="compose")
+    state.status = "clarified"
+    state.clarification = "还需要多少时间？"
+    clarify = display_response(state, "resume-token-value")
+    assert clarify["type"] == "clarify"
+    assert clarify["payload"] == {"question": "还需要多少时间？"}
+    assert clarify["resumeToken"] == "resume-token-value"
+    assert "state" not in clarify and "trace" not in clarify
+
+    state.status = "submitted"
+    plan = display_response(state)
+    assert plan["type"] == "plan"
+    assert {"draftProject", "payload", "calendar", "capacity"} <= set(plan)
+    assert "state" not in plan and "trace" not in plan
+
+    state.status = "failed"
+    state.failure_reason = "模型没有返回可执行的工具调用"
+    failed = display_response(state)
+    assert failed["type"] == "failed"
+    assert failed["payload"] == {"reason": "模型没有返回可执行的工具调用"}
+    assert "state" not in failed and "trace" not in failed
+
+
 def test_goal_deadline_and_advice_validation():
     request = {"snapshot": project().model_dump(mode="json"), "trigger": "compose", "now": NOW}
     assert AgentRequest.model_validate(request).trigger == "compose"

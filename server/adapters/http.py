@@ -120,14 +120,10 @@ def _advance(request: AgentRequest, connection: Request, progress: dict | None) 
     expected_token = os.environ.get("LOOM_REVIEWER_TOKEN", "")
     token = connection.headers.get("x-loom-reviewer-token", "")
     bucket = "reviewer" if expected_token and secrets.compare_digest(token, expected_token) else "public"
-    if request.state is not None:
-        if not request.state.get("resumeToken"):
-            raise HTTPException(409, "暂停状态缺少恢复凭据，请重新发起规划")
+    if request.resumeToken is not None:
         if request.trigger != "resume" or not request.clarificationAnswer:
             raise HTTPException(409, "恢复需要用户回答")
-        state = State.from_dict(ledger.resume(request.state["resumeToken"]))
-        if state.project.id != request.snapshot.id:
-            raise HTTPException(409, "恢复请求属于不同项目")
+        state = State.from_dict(ledger.resume(request.resumeToken, request.snapshot.id))
         changed = state.project.model_dump() != request.snapshot.model_dump()
         if changed:
             state.trace.append({"type": "context_update", "fromVersion": state.project.version,
@@ -152,41 +148,38 @@ def _advance(request: AgentRequest, connection: Request, progress: dict | None) 
             progress["stage"] = stage
 
     state = run(state, MeteredLLM(connection.app.state.llm, ledger, bucket), progress=update_stage)
-    response_state = state.to_dict()
-    if state.status == "clarified":
-        response_state["resumeToken"] = ledger.pause(response_state)
+    resume_token = ledger.pause(state.to_dict()) if state.status == "clarified" else None
+    return display_response(state, resume_token)
+
+
+def display_response(state: State, resume_token: str | None = None) -> dict:
     proposed_tasks = state.proposed_tasks
     if state.status == "submitted":
         return {
             "type": "plan",
             "draftProject": state.project.model_dump(mode="json"),
             "payload": state.plan.model_dump(mode="json") if state.plan else {},
-            "trace": state.trace,
             "proposed_tasks": proposed_tasks,
-            "state": response_state,
             "calendar": calendar_metadata(state),
             "capacity": capacity(state.project, state.now),
         }
     if state.status == "proposed":
         return {"type": "tasks", "payload": {"tasks": proposed_tasks},
-                "trace": state.trace, "state": response_state,
+                "proposed_tasks": proposed_tasks,
                 "capacity": capacity(state.project, state.now)}
     if state.status == "clarified":
         return {
             "type": "clarify",
             "draftProject": state.project.model_dump(mode="json"),
             "payload": {"question": state.clarification or ""},
-            "trace": state.trace,
             "proposed_tasks": proposed_tasks,
-            "state": response_state,
+            "resumeToken": resume_token,
             "capacity": capacity(state.project, state.now),
         }
     return {
         "type": "failed",
         "payload": {"reason": state.failure_reason or "unknown"},
-        "trace": state.trace,
         "proposed_tasks": proposed_tasks,
-        "state": response_state,
         "capacity": capacity(state.project, state.now),
     }
 

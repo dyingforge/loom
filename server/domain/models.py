@@ -184,7 +184,7 @@ class AgentRequest(BaseModel):
     trigger: Literal["delay", "progress", "new", "resume", "propose", "compose", "revise"]
     instruction: str = Field(default="", max_length=4000)
     clarificationAnswer: Optional[str] = None
-    state: Optional[dict] = None  # 暂停恢复用
+    resumeToken: Optional[str] = None  # 服务端恢复凭据
     now: datetime
 
     @model_validator(mode="after")
@@ -214,6 +214,5 @@ class Violation(BaseModel):
 
 class AgentResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    type: Literal["plan", "clarify", "failed"]
+    type: Literal["plan", "tasks", "clarify", "failed"]
     payload: dict
-    trace: list[dict] = Field(default_factory=list)

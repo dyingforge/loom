@@ -71,10 +71,11 @@ def main():
             invalid = client.post("/v1/agent/advance", json={"snapshot": PROJECT})
             assert invalid.status_code == 422
             results.append({"case": "invalid-request", "status": invalid.status_code})
-            expired = dict(REQUEST, trigger="resume", state={"resumeToken": "expired"}, clarificationAnswer="继续")
-            response = client.post("/v1/agent/advance", json=expired)
-            assert response.status_code == 409
-            results.append({"case": "invalid-resume", "status": response.status_code, "body": response.json()})
+            unknown = dict(REQUEST, trigger="resume", clarificationAnswer="继续",
+                           resumeToken="never-issued-token")
+            response = client.post("/v1/agent/advance", json=unknown)
+            assert response.status_code == 404
+            results.append({"case": "unknown-resume", "status": response.status_code, "body": response.json()})
         finish(process, client)
     output = ARTIFACTS / "results.json"
     output.write_text(json.dumps(results, ensure_ascii=False, indent=2))

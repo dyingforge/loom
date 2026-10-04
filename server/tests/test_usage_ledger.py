@@ -1,5 +1,7 @@
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -37,13 +39,113 @@ def test_public_and_reviewer_have_separate_finite_limits():
 
 def test_pause_is_persistent_and_consumed_once():
     value = ledger()
-    token = value.pause({"llm_calls": 8, "candidate_attempts": {"candidate": 3}})
+    token = value.pause({"project": {"id": "owner"}, "llm_calls": 8,
+                         "candidate_attempts": {"candidate": 3}})
     resumed = UsageLedger(value.path, 10, 10, 30, 120, 3)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(resumed.resume, token) for _ in range(2)]
+        futures = [pool.submit(resumed.resume, token, "owner") for _ in range(2)]
     assert sum(future.exception() is None for future in futures) == 1
     result = next(future.result() for future in futures if future.exception() is None)
     assert result["llm_calls"] == 8
+
+
+def test_resume_distinguishes_unknown_consumed_and_expired(monkeypatch):
+    monkeypatch.setattr(UsageLedger, "PAUSE_TTL_SECONDS", 0.5)
+    value = ledger()
+    with pytest.raises(HTTPException) as unknown:
+        value.resume("never-issued", "owner")
+    assert unknown.value.status_code == 404
+    assert unknown.value.detail["code"] == "resume_unknown"
+
+    consumed = value.pause({"project": {"id": "owner"}, "llm_calls": 1})
+    value.resume(consumed, "owner")
+    with pytest.raises(HTTPException) as used:
+        value.resume(consumed, "owner")
+    assert used.value.status_code == 409
+    assert used.value.detail["code"] == "resume_consumed"
+
+    expired = value.pause({"project": {"id": "owner"}, "llm_calls": 2})
+    time.sleep(0.6)
+    with pytest.raises(HTTPException) as stale:
+        value.resume(expired, "owner")
+    assert stale.value.status_code == 410
+    assert stale.value.detail["code"] == "resume_expired"
+
+
+def test_pause_cleanup_keeps_expired_tokens_recognizable(monkeypatch):
+    monkeypatch.setattr(UsageLedger, "PAUSE_TTL_SECONDS", 0.5)
+    value = ledger()
+    stale = value.pause({"project": {"id": "owner"}, "llm_calls": 1})
+    time.sleep(0.6)
+    fresh = value.pause({"project": {"id": "owner"}, "llm_calls": 2})
+    with sqlite3.connect(value.path) as db:
+        tokens = {row[0] for row in db.execute("SELECT token FROM pauses")}
+    assert stale not in tokens and fresh in tokens
+    with pytest.raises(HTTPException) as expired:
+        value.resume(stale, "owner")
+    assert expired.value.status_code == 410
+    assert expired.value.detail["code"] == "resume_expired"
+    assert value.resume(fresh, "owner")["llm_calls"] == 2
+
+
+def test_project_mismatch_does_not_consume_token():
+    value = ledger()
+    token = value.pause({"project": {"id": "owner"}, "llm_calls": 1})
+    with pytest.raises(HTTPException) as mismatch:
+        value.resume(token, "intruder")
+    assert mismatch.value.status_code == 409
+    assert mismatch.value.detail["code"] == "resume_project_mismatch"
+    assert value.resume(token, "owner")["llm_calls"] == 1
+
+
+def test_resume_route_returns_distinct_token_errors(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from server.adapters.http import app
+    monkeypatch.setattr(UsageLedger, "PAUSE_TTL_SECONDS", 0.5)
+    from server.agent.loop import State
+    from server.domain.models import Project
+
+    snapshot = {"id": "resume-project", "version": 0, "goal": "完成作品",
+                "workHours": {"start": "09:00", "end": "18:00"},
+                "tasks": [{"id": "a", "title": "设计", "priority": 1, "remainingHours": 2}]}
+    request = {"snapshot": snapshot, "trigger": "resume", "clarificationAnswer": "两天",
+               "now": "2026-10-01T08:00:00"}
+
+    def paused(project_id):
+        project = Project.model_validate({**snapshot, "id": project_id})
+        return State(project=project, now=datetime(2026, 10, 1, 8), trigger="compose",
+                     status="clarified", clarification="多久？").to_dict()
+
+    ledger = UsageLedger(Path(tmp_path) / "service.sqlite3", 1000, 1000, 30, 120, 60)
+    app.state.ledger = ledger
+    client = TestClient(app)
+    unknown = client.post("/v1/agent/advance", json={**request, "resumeToken": "missing"})
+    assert unknown.status_code == 404
+    assert unknown.json()["detail"]["code"] == "resume_unknown"
+
+    consumed = ledger.pause(paused("resume-project"))
+    ledger.resume(consumed, "resume-project")
+    used = client.post("/v1/agent/advance", json={**request, "resumeToken": consumed})
+    assert used.status_code == 409
+    assert used.json()["detail"]["code"] == "resume_consumed"
+
+    expired = ledger.pause(paused("resume-project"))
+    time.sleep(0.6)
+    stale = client.post("/v1/agent/advance", json={**request, "resumeToken": expired})
+    assert stale.status_code == 410
+    assert stale.json()["detail"]["code"] == "resume_expired"
+
+    other = ledger.pause(paused("other-project"))
+    mismatch = client.post("/v1/agent/advance", json={**request, "resumeToken": other})
+    assert mismatch.status_code == 409
+    assert mismatch.json()["detail"]["code"] == "resume_project_mismatch"
+    assert ledger.resume(other, "other-project")["project"]["id"] == "other-project"
+
+    legacy = client.post("/v1/agent/advance", json={**request, "state": {"resumeToken": expired}})
+    assert legacy.status_code == 422
+
+    missing = client.post("/v1/agent/advance", json=request)
+    assert missing.status_code == 409
 
 
 def test_rate_limit_persists():
