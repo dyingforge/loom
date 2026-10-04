@@ -1,0 +1,369 @@
+diff --git a/platform/script/src/heap.rs b/platform/script/src/heap.rs
+index c52b1d5b9..8baed1d6e 100644
+--- a/platform/script/src/heap.rs
++++ b/platform/script/src/heap.rs
+@@ -37,6 +37,9 @@ pub struct ScriptHeapMemoryStats {
+     /// Logical bytes charged since the last collection: the recent-allocation
+     /// signal feeding the collection heuristic.
+     pub allocated_since_gc_bytes: usize,
++    /// 堆整个生命周期内计费的逻辑字节数。单调且饱和，不因回收清零；宿主可以
++    /// 在入口前后各读一次相减，中间即使发生回收也能得到本次分配增量。
++    pub allocated_total_bytes: usize,
+     /// Number of completed mark/sweep collections.
+     pub collections: usize,
+     /// Number of cleared `String` buffers parked for reuse.
+@@ -148,6 +151,9 @@ pub struct ScriptHeap {
+     /// Logical bytes charged since the last collection. A cheap
+     /// recent-allocation signal for the collection heuristic.
+     pub(crate) allocated_since_gc_bytes: usize,
++    /// 堆整个生命周期内计费的逻辑字节数。单调且饱和，回收不会隐藏某次入口的
++    /// 分配总量。
++    pub(crate) allocated_total_bytes: usize,
+     /// Completed mark/sweep collections, for host-visible statistics.
+     pub(crate) gc_count: usize,
+     /// Per-string construction ceiling (logical bytes of one script string).
+@@ -220,6 +226,9 @@ pub(crate) fn charge_allocation(&mut self, bytes: usize, operation: &'static str
+         // they cannot preflight an exact size; it is not real payload.
+         if bytes != usize::MAX {
+             self.allocated_since_gc_bytes = self.allocated_since_gc_bytes.saturating_add(bytes);
++            // 终身总计从不清零，宿主观察一次入口时即使中间发生 sweep，
++            // 仍能算出这次入口的分配量。
++            self.allocated_total_bytes = self.allocated_total_bytes.saturating_add(bytes);
+         }
+         true
+     }
+@@ -317,6 +326,7 @@ pub fn memory_stats(&self) -> ScriptHeapMemoryStats {
+         ScriptHeapMemoryStats {
+             retained_bytes: self.accounted_heap_bytes(),
+             allocated_since_gc_bytes: self.allocated_since_gc_bytes,
++            allocated_total_bytes: self.allocated_total_bytes,
+             collections: self.gc_count,
+             reuse_buffers: self.strings_reuse.len(),
+             reuse_bytes: self.strings_reuse.iter().map(String::capacity).sum(),
+@@ -1781,6 +1791,30 @@ fn needs_gc_triggers_on_byte_occupancy_and_recent_allocation() {
+         assert_eq!(heap.memory_stats().allocated_since_gc_bytes, 0);
+     }
+ 
++    #[test]
++    fn allocated_total_bytes_is_monotonic_across_collections() {
++        let mut heap = ScriptHeap::empty();
++        // 建立模块命名空间时已经计过费。
++        let start = heap.memory_stats().allocated_total_bytes;
++        assert!(start > 0);
++
++        assert!(heap.charge_allocation(1000, "test charge"));
++        assert_eq!(heap.memory_stats().allocated_total_bytes, start + 1000);
++
++        // 回收清空 since-GC 信号，但不清空终身总计。
++        heap.sweep(false);
++        let after_gc = heap.memory_stats();
++        assert_eq!(after_gc.allocated_since_gc_bytes, 0);
++        assert_eq!(after_gc.allocated_total_bytes, start + 1000);
++
++        assert!(heap.charge_allocation(24, "test charge"));
++        assert_eq!(heap.memory_stats().allocated_total_bytes, start + 1024);
++
++        // `usize::MAX` 是拒绝哨兵，不是真实负载。
++        assert!(heap.charge_allocation(usize::MAX, "sentinel"));
++        assert_eq!(heap.memory_stats().allocated_total_bytes, start + 1024);
++    }
++
+     #[test]
+     fn memory_stats_track_a_capped_vm() {
+         let mut host = ScriptVmHost::new((), ());
+diff --git a/widgets/src/widget_async.rs b/widgets/src/widget_async.rs
+index 8bdbdf0ef..0c9bc096f 100644
+--- a/widgets/src/widget_async.rs
++++ b/widgets/src/widget_async.rs
+@@ -1,5 +1,6 @@
+ use {
+     crate::makepad_draw::*,
++    crate::makepad_draw::makepad_platform::makepad_script::heap::ScriptHeapMemoryStats,
+     crate::makepad_draw::makepad_platform::script::std::ScriptStd,
+     crate::makepad_draw::makepad_platform::script::timer::CxScriptTimer,
+     crate::makepad_script::{script_err_not_found, ScriptFnRef, ScriptThreadId},
+@@ -437,10 +438,8 @@ fn with_isolate_installed<R>(cx: &mut Cx, vm_id: SplashVmId, f: impl FnOnce(&mut
+     let outer_std = std::mem::replace(&mut cx.script_data.std, isolated.std);
+     let outer_vm = cx.script_vm.take();
+     cx.script_vm = isolated.vm.take();
+-    let before_stats = cx.script_vm.as_ref().map(|bx| {
+-        let stats = bx.heap.memory_stats();
+-        (stats.reuse_buffers, stats.collections)
+-    });
++    let before_telemetry = cx.script_vm.as_ref().map(|bx| bx.heap.memory_stats());
++    let before_stats = before_telemetry.map(|stats| (stats.reuse_buffers, stats.collections));
+ 
+     // Whether `f` returns or unwinds, the isolate goes back into the table
+     // and the outer VM back onto `Cx`: a panic caught above this frame (a
+@@ -457,6 +456,13 @@ fn with_isolate_installed<R>(cx: &mut Cx, vm_id: SplashVmId, f: impl FnOnce(&mut
+     // isolate off `Cx` and nothing of its running, its heap can be read for
+     // the retained-cap refusal the interpreter has just bailed on.
+     record_splash_heap_overflow(cx, vm_id, &mut isolated, before_stats);
++    // 遥测只读取已停放的堆计数；isolate 已离开 `Cx`，不执行任何脚本。
++    // 未启用时不写日志。
++    if let Some(before) = before_telemetry {
++        if let Some(after) = isolated.vm.as_ref().map(|bx| bx.heap.memory_stats()) {
++            log_memory_telemetry(vm_id, before, after);
++        }
++    }
+     cx.global::<CxWidgetAsync>()
+         .isolated_vms
+         .vms
+@@ -553,6 +559,45 @@ fn splash_vm_stopped(cx: &mut Cx, vm_id: SplashVmId) -> bool {
+     cx.global::<CxWidgetAsync>().terminated.contains_key(&vm_id)
+ }
+ 
++/// 宿主是否要求逐入口内存统计；默认关闭，普通运行不写日志。
++fn memory_telemetry_enabled() -> bool {
++    #[cfg(not(target_arch = "wasm32"))]
++    {
++        std::env::var("LOOM_MEMORY_TELEMETRY").as_deref() == Ok("1")
++    }
++    #[cfg(target_arch = "wasm32")]
++    {
++        false
++    }
++}
++
++/// 一次遥测入口写的一条结构化 JSON：VM 标识与堆自身的计数，只有数字。
++/// 不包含脚本值、用户输入、恢复凭据或网络正文。
++fn memory_telemetry_json(vm_id: SplashVmId, before: ScriptHeapMemoryStats, after: ScriptHeapMemoryStats) -> String {
++    let allocated = after.allocated_total_bytes.saturating_sub(before.allocated_total_bytes);
++    serde_json::json!({
++        "kind": "loom.memory.entry",
++        "vm": vm_id.0,
++        "retainedBefore": before.retained_bytes,
++        "retainedAfter": after.retained_bytes,
++        "allocatedBytes": allocated,
++        "collectionsBefore": before.collections,
++        "collectionsAfter": after.collections,
++        "reuseBuffersBefore": before.reuse_buffers,
++        "reuseBuffersAfter": after.reuse_buffers,
++        "reuseBytesBefore": before.reuse_bytes,
++        "reuseBytesAfter": after.reuse_bytes,
++    })
++    .to_string()
++}
++
++/// 宿主要求时才写一条遥测日志；未启用时不做任何事。
++fn log_memory_telemetry(vm_id: SplashVmId, before: ScriptHeapMemoryStats, after: ScriptHeapMemoryStats) {
++    if memory_telemetry_enabled() {
++        crate::makepad_platform::log!("{}", memory_telemetry_json(vm_id, before, after));
++    }
++}
++
+ /// Runs isolate-side work and CONTAINS any panic it raises: the host app must
+ /// survive anything a mini-app isolate does. Returns false when a panic was
+ /// contained; the isolate is left degraded (a Force Stop cleans it up).
+@@ -2181,6 +2226,211 @@ fn a_callback_reached_during_a_draw_runs_under_the_time_budget() {
+     }
+ }
+ 
++#[cfg(test)]
++mod memory_telemetry_tests {
++    use super::*;
++    use crate::makepad_platform::log::{set_log_tap, LogLevel};
++    use std::sync::{Mutex, MutexGuard};
++
++    /// 以下测试都会改动进程级的环境变量与日志捕获；用锁串行执行，
++    /// 避免相互看到对方的环境值或捕获行。
++    static LOCK: Mutex<()> = Mutex::new(());
++    static CAPTURED: Mutex<Vec<String>> = Mutex::new(Vec::new());
++
++    fn capture(message: &str, _level: LogLevel) {
++        CAPTURED.lock().unwrap().push(message.to_string());
++    }
++
++    /// 进入测试时安装日志捕获并记录原环境变量；离开作用域时关闭捕获并
++    /// 恢复原值，即使测试失败也不会影响后续测试。
++    struct CaptureGuard {
++        _lock: MutexGuard<'static, ()>,
++        previous: Option<std::ffi::OsString>,
++    }
++
++    impl CaptureGuard {
++        fn enter() -> CaptureGuard {
++            let lock = LOCK.lock().unwrap();
++            // 用 var_os 保存原值，非 Unicode 的内容也能原样恢复。
++            let previous = std::env::var_os("LOOM_MEMORY_TELEMETRY");
++            CAPTURED.lock().unwrap().clear();
++            set_log_tap(Some(capture));
++            CaptureGuard { _lock: lock, previous }
++        }
++    }
++
++    impl Drop for CaptureGuard {
++        fn drop(&mut self) {
++            set_log_tap(None);
++            match &self.previous {
++                Some(value) => std::env::set_var("LOOM_MEMORY_TELEMETRY", value),
++                None => std::env::remove_var("LOOM_MEMORY_TELEMETRY"),
++            }
++        }
++    }
++
++    /// 先按标记识别遥测日志行，再用 serde_json 解析；格式错误直接让测试失败。
++    fn telemetry_lines() -> Vec<serde_json::Value> {
++        CAPTURED
++            .lock()
++            .unwrap()
++            .iter()
++            .filter(|line| line.contains("\"kind\":\"loom.memory.entry\""))
++            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("遥测 JSON 合法"))
++            .collect()
++    }
++
++    fn field(value: &serde_json::Value, name: &str) -> u64 {
++        value[name].as_u64().expect("遥测数字")
++    }
++
++    /// 反复拼接字符串，产生真实的输入型分配，并让复用池有内容。
++    fn allocate_probe_strings(vm: &mut ScriptVm) {
++        vm.eval(crate::makepad_script::script! {
++            let s = ""
++            for i in 0..40 { s = s + "xxxxxxxxxx" }
++            s
++        });
++    }
++
++    /// 投影是纯函数：输入的数字原样出现在输出里。
++    #[test]
++    fn telemetry_json_reports_the_interval() {
++        let before = ScriptHeapMemoryStats {
++            retained_bytes: 4096,
++            allocated_total_bytes: 1000,
++            collections: 2,
++            reuse_buffers: 3,
++            reuse_bytes: 96,
++            ..Default::default()
++        };
++        let after = ScriptHeapMemoryStats {
++            retained_bytes: 5120,
++            allocated_total_bytes: 1750,
++            collections: 3,
++            reuse_buffers: 4,
++            reuse_bytes: 128,
++            ..Default::default()
++        };
++        let line = memory_telemetry_json(SplashVmId(7), before, after);
++        let value: serde_json::Value = serde_json::from_str(&line).expect("遥测 JSON 合法");
++        assert_eq!(field(&value, "vm"), 7, "{line}");
++        assert_eq!(field(&value, "retainedBefore"), 4096, "{line}");
++        assert_eq!(field(&value, "retainedAfter"), 5120, "{line}");
++        assert_eq!(field(&value, "allocatedBytes"), 750, "{line}");
++        assert_eq!(field(&value, "collectionsBefore"), 2, "{line}");
++        assert_eq!(field(&value, "collectionsAfter"), 3, "{line}");
++        assert_eq!(field(&value, "reuseBuffersBefore"), 3, "{line}");
++        assert_eq!(field(&value, "reuseBuffersAfter"), 4, "{line}");
++        assert_eq!(field(&value, "reuseBytesBefore"), 96, "{line}");
++        assert_eq!(field(&value, "reuseBytesAfter"), 128, "{line}");
++    }
++
++    /// 门禁就是宿主设置的环境变量。
++    #[test]
++    fn telemetry_gate_follows_the_environment() {
++        let _guard = CaptureGuard::enter();
++        std::env::remove_var("LOOM_MEMORY_TELEMETRY");
++        assert!(!memory_telemetry_enabled());
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "1");
++        assert!(memory_telemetry_enabled());
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "0");
++        assert!(!memory_telemetry_enabled());
++    }
++
++    /// 未启用时不写任何行；启用时每个入口写一行，含 VM 标识与真实分配计数。
++    #[test]
++    fn telemetry_logs_one_line_per_enabled_entry() {
++        let _guard = CaptureGuard::enter();
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        cx.with_vm(crate::script_mod);
++        let vm_id = cx.alloc_splash_vm();
++
++        std::env::remove_var("LOOM_MEMORY_TELEMETRY");
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        assert!(telemetry_lines().is_empty(), "未启用时不写日志");
++
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "1");
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        let lines = telemetry_lines();
++        assert!(!lines.is_empty(), "启用时写一行");
++        assert!(lines.iter().any(|line| field(line, "vm") == vm_id.0), "{lines:?}");
++        assert!(
++            lines.iter().any(|line| field(line, "allocatedBytes") > 0),
++            "{lines:?}"
++        );
++
++        cx.free_splash_vm(vm_id);
++    }
++
++    /// 两次入口之间的回收不能隐藏第二次的分配增量：终身计数跨 sweep 保留。
++    #[test]
++    fn telemetry_measures_allocation_across_a_collection() {
++        let _guard = CaptureGuard::enter();
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        cx.with_vm(crate::script_mod);
++        let vm_id = cx.alloc_splash_vm();
++
++        let before =
++            cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.memory_stats().allocated_total_bytes);
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        let after_first =
++            cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.memory_stats().allocated_total_bytes);
++        assert!(after_first > before, "循环产生了分配");
++
++        cx.with_script_vm_id(vm_id, |vm| vm.gc());
++        cx.with_script_vm_id(vm_id, allocate_probe_strings);
++        let after_second =
++            cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.memory_stats().allocated_total_bytes);
++        assert!(after_second > after_first, "终身计数没有在回收时清零");
++
++        cx.free_splash_vm(vm_id);
++    }
++
++    /// 真实 `Splash` 运行拼接字符串的 body，会产生带真实分配增量的遥测行。
++    #[test]
++    fn telemetry_records_a_splash_string_entry() {
++        use crate::widget_tree::set_ui_root;
++
++        let _guard = CaptureGuard::enter();
++        std::env::set_var("LOOM_MEMORY_TELEMETRY", "1");
++
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        let template = cx.with_vm(|vm| {
++            crate::script_mod(vm);
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                use mod.widgets.*
++                View{ splash := Splash{} }
++            });
++            let obj = v.as_object().expect("template did not eval to an object");
++            vm.bx.heap.new_object_ref(obj)
++        });
++        let pane = cx.with_vm(|vm| {
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                View{ height: Fit }
++            });
++            WidgetRef::script_from_value(vm, v)
++        });
++        set_ui_root(&mut cx, &pane);
++        let host = cx.with_vm(|vm| WidgetRef::script_from_value(vm, template.as_object().into()));
++        cx.widget_tree_insert_child_deep(pane.widget_uid(), live_id!(apphost), host.clone());
++        let splash = host.widget(&cx, &[live_id!(splash)]);
++        splash.set_text(
++            &mut cx,
++            "let s = \"\"\nfor i in 0..40 { s = s + \"xxxxxxxxxx\" }\nLabel{text: s}",
++        );
++
++        let lines = telemetry_lines();
++        assert!(!lines.is_empty(), "Splash 入口写遥测");
++        assert!(
++            lines.iter().any(|line| field(line, "allocatedBytes") > 0),
++            "{lines:?}"
++        );
++    }
++}
++
+ #[cfg(test)]
+ mod isolate_tests {
+     use super::*;
