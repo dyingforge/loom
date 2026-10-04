@@ -66,7 +66,7 @@ class UsageLedger:
     def pause(self, state: dict) -> str:
         now = time.time()
         expires = now + self.PAUSE_TTL_SECONDS
-        token = f"{expires:.0f}.{secrets.token_urlsafe(32)}"
+        token = f"{int(expires)}.{secrets.token_urlsafe(32)}"
         with sqlite3.connect(self.path) as db:
             db.execute("DELETE FROM pauses WHERE expires < ?", (now,))
             db.execute("INSERT INTO pauses VALUES (?,?,?,0)",
@@ -74,14 +74,11 @@ class UsageLedger:
         return token
 
     @staticmethod
-    def _token_expiry(token: str) -> float | None:
+    def _token_expiry(token: str) -> int | None:
         prefix, separator, _ = token.partition(".")
-        if not separator:
+        if not separator or not prefix.isdigit():
             return None
-        try:
-            return float(prefix)
-        except ValueError:
-            return None
+        return int(prefix)
 
     def resume(self, token: str, project_id: str) -> dict:
         now = time.time()

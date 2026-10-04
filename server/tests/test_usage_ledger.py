@@ -49,7 +49,8 @@ def test_pause_is_persistent_and_consumed_once():
     assert result["llm_calls"] == 8
 
 
-def test_resume_distinguishes_unknown_consumed_and_expired():
+def test_resume_distinguishes_unknown_consumed_and_expired(monkeypatch):
+    monkeypatch.setattr(UsageLedger, "PAUSE_TTL_SECONDS", 0.5)
     value = ledger()
     with pytest.raises(HTTPException) as unknown:
         value.resume("never-issued", "owner")
@@ -64,20 +65,18 @@ def test_resume_distinguishes_unknown_consumed_and_expired():
     assert used.value.detail["code"] == "resume_consumed"
 
     expired = value.pause({"project": {"id": "owner"}, "llm_calls": 2})
-    with sqlite3.connect(value.path) as db:
-        db.execute("UPDATE pauses SET expires=? WHERE token=?", (time.time() - 1, expired))
+    time.sleep(0.6)
     with pytest.raises(HTTPException) as stale:
         value.resume(expired, "owner")
     assert stale.value.status_code == 410
     assert stale.value.detail["code"] == "resume_expired"
 
 
-def test_pause_cleanup_keeps_expired_tokens_recognizable():
+def test_pause_cleanup_keeps_expired_tokens_recognizable(monkeypatch):
+    monkeypatch.setattr(UsageLedger, "PAUSE_TTL_SECONDS", 0.5)
     value = ledger()
-    stale = f"{int(time.time()) - 1}.orphan"
-    with sqlite3.connect(value.path) as db:
-        db.execute("INSERT INTO pauses VALUES (?,?,?,0)",
-                   (stale, '{"project": {"id": "owner"}}', time.time() - 1))
+    stale = value.pause({"project": {"id": "owner"}, "llm_calls": 1})
+    time.sleep(0.6)
     fresh = value.pause({"project": {"id": "owner"}, "llm_calls": 2})
     with sqlite3.connect(value.path) as db:
         tokens = {row[0] for row in db.execute("SELECT token FROM pauses")}
@@ -99,9 +98,10 @@ def test_project_mismatch_does_not_consume_token():
     assert value.resume(token, "owner")["llm_calls"] == 1
 
 
-def test_resume_route_returns_distinct_token_errors(tmp_path):
+def test_resume_route_returns_distinct_token_errors(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     from server.adapters.http import app
+    monkeypatch.setattr(UsageLedger, "PAUSE_TTL_SECONDS", 0.5)
     from server.agent.loop import State
     from server.domain.models import Project
 
@@ -130,8 +130,7 @@ def test_resume_route_returns_distinct_token_errors(tmp_path):
     assert used.json()["detail"]["code"] == "resume_consumed"
 
     expired = ledger.pause(paused("resume-project"))
-    with sqlite3.connect(ledger.path) as db:
-        db.execute("UPDATE pauses SET expires=? WHERE token=?", (time.time() - 1, expired))
+    time.sleep(0.6)
     stale = client.post("/v1/agent/advance", json={**request, "resumeToken": expired})
     assert stale.status_code == 410
     assert stale.json()["detail"]["code"] == "resume_expired"
