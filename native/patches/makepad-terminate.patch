@@ -1,0 +1,887 @@
+diff --git a/widgets/src/splash.rs b/widgets/src/splash.rs
+index ac1ebe84e..2513ace83 100644
+--- a/widgets/src/splash.rs
++++ b/widgets/src/splash.rs
+@@ -85,6 +85,10 @@ pub struct Splash {
+     /// Heap ceiling for this isolate, applied to its script heap.
+     #[rust]
+     memory_bytes: Option<usize>,
++    /// Set when this app was stopped for exceeding `memory_bytes`; carries the
++    /// message shown in the host-owned error view.
++    #[rust]
++    memory_error: Option<String>,
+     /// What to call this script in error messages. Set by the host to the
+     /// mini-app's id; empty for previews and one-off evals.
+     ///
+@@ -206,12 +210,72 @@ fn source_label(&self) -> String {
+ 
+     fn eval_body(&mut self, cx: &mut Cx) {self.eval_styled_body(cx,false);}
+ 
++    /// If this app's isolate was stopped for exceeding its memory cap, replace
++    /// its view with the host-owned error and reclaim the isolate. Runs at the
++    /// host's safe point (an event, a `set_text`, a script hook): the isolate
++    /// must not be freed while it is still installed on `Cx`, which is why the
++    /// stop is deferred here from the script boundary that detected it.
++    fn terminate_for_memory(&mut self, cx: &mut Cx) -> bool {
++        if self.vm_id == MAIN_SPLASH_VM_ID {
++            return false;
++        }
++        let Some(termination) = crate::widget_async::take_splash_termination(cx, self.vm_id) else {
++            return false;
++        };
++        let message = format!(
++            "小程序内存超出限制，已停止运行。内存上限 {} 字节，已用 {} 字节。",
++            termination.limit_bytes, termination.retained_bytes
++        );
++        log!("splash: {} stopped for memory: {}", self.source_label(), message);
++        let error_view = self.memory_error_view(cx, &message);
++        self.memory_error = Some(message);
++        self.body.set("");
++        self.stop(cx);
++        self.view = error_view;
++        cx.widget_tree_mark_dirty(self.uid);
++        true
++    }
++
++    /// Whether this app has been stopped for memory, running the host's
++    /// termination pass first if a fresh refusal was recorded. Every script
++    /// execution point inside an event or a draw calls this once it returns,
++    /// so the rest of that event/draw is skipped instead of running against
++    /// the stopped isolate's old view.
++    fn memory_stopped(&mut self, cx: &mut Cx) -> bool {
++        self.terminate_for_memory(cx) || self.memory_error.is_some()
++    }
++
++    /// The host-owned view shown after a memory stop. Built in the MAIN VM from
++    /// a literal host message, so it never re-runs the stopped app's script.
++    fn memory_error_view(&mut self, cx: &mut Cx, message: &str) -> View {
++        let code = format!(
++            "use mod.prelude.widgets.*\nView{{height:Fit, Label{{text: {:?}}}}}",
++            message
++        );
++        let script_mod = ScriptMod {
++            cargo_manifest_path: String::new(),
++            module_path: format!("splash-memory-error#{}", self.self_id()),
++            file: format!("splash:memory:{}", self.self_id()),
++            line: 0,
++            column: 0,
++            code: String::new(),
++            values: vec![],
++        };
++        cx.with_vm(|vm| {
++            let value = vm.eval_with_append_source(script_mod, &code, NIL.into());
++            View::script_from_value(vm, value)
++        })
++    }
++
+     fn eval_styled_body(&mut self,cx:&mut Cx,preserve:bool) {
+         self.eval_styled_body_with_apply(cx, preserve, &Apply::ScriptReapply);
+     }
+ 
+     fn eval_styled_body_with_apply(&mut self, cx: &mut Cx, preserve: bool, apply: &Apply) {
+-        if self.body.as_ref().is_empty() {
++        if self.body.as_ref().is_empty() || self.memory_error.is_some() {
++            // A stopped app never runs its script again: a style reapply, a
++            // reload, or a host restarting it in place is refused. A host
++            // that wants it back allocates a fresh `Splash`.
+             return;
+         }
+ 
+@@ -622,15 +686,26 @@ fn drop(&mut self) {
+ 
+ impl Widget for Splash {
+     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
++        if self.memory_stopped(cx) {
++            return;
++        }
+         if self.allow_net {
+             if let Event::NetworkResponses(responses) = event {
+                 crate::widget_async::handle_splash_network_responses(cx, self.vm_id, responses);
++                // Network callbacks run isolate script; a refusal there ends
++                // this event before the old view takes any more of it.
++                if self.memory_stopped(cx) {
++                    return;
++                }
+             }
+         }
+         // 1 Hz tick for `fn tick()` bodies: the script updates its widgets in
+         // place (ui.<id>.set_*), which schedules no paint of its own.
+         if self.tick_timer.is_event(event).is_some() {
+             self.call_script_fn(cx, id!(tick), &[]);
++            if self.memory_stopped(cx) {
++                return;
++            }
+             self.view.redraw(cx);
+         }
+         // Per-frame pump (see `anim_next_frame`): re-evaluate the body once per
+@@ -659,6 +734,9 @@ fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
+                 // body's `sys.*` calls now read the fetch cache instead of
+                 // returning placeholders.
+                 self.eval_styled_body(cx, false);
++                if self.memory_stopped(cx) {
++                    return;
++                }
+                 cx.redraw_all();
+             } else if needs_frame_anim {
+                 self.view.redraw(cx);
+@@ -666,15 +744,30 @@ fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
+             self.anim_next_frame = cx.new_next_frame();
+         }
+         self.view.handle_event(cx, event, scope);
++        self.memory_stopped(cx);
+     }
+ 
+     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
+-        if self.style_pending && self.vm_id!=MAIN_SPLASH_VM_ID {self.eval_styled_body(cx,true);}
+-        //let tree = self.view.widget_tree();
+-        //cx.with_vm(|vm| {
+-        //    log!("{}", tree.display(vm.heap()));
+-        //});
+-        self.view.draw_walk(cx, scope, walk)
++        if self.memory_error.is_some() {
++            return self.view.draw_walk(cx, scope, walk);
++        }
++        if self.style_pending && self.vm_id != MAIN_SPLASH_VM_ID {
++            self.eval_styled_body(cx, true);
++            if self.memory_stopped(cx) {
++                return DrawStep::done();
++            }
++        }
++        // Draw exactly as before: the view's own script entries install the
++        // isolate themselves, each under its own time budget, and record a
++        // refusal at that boundary. Read the boundary once here so a refusal
++        // that landed during the pass is shown in this same frame — without
++        // pre-installing the isolate, which would make those nested entries
++        // skip their budget.
++        let step = self.view.draw_walk(cx, scope, walk);
++        if self.memory_stopped(cx) {
++            return DrawStep::done();
++        }
++        step
+     }
+ 
+     fn text(&self) -> String {
+@@ -682,6 +775,11 @@ fn text(&self) -> String {
+     }
+ 
+     fn set_text(&mut self, cx: &mut Cx, v: &str) {
++        if self.memory_error.is_some() {
++            // A stopped instance refuses new script. Relaunching is a new
++            // `Splash`, so a stale instance's old isolate cannot be revived.
++            return;
++        }
+         if self.body.as_ref() != v {
+             self.body.set(v);
+             // Empty body = tear down the app: reclaim its isolate (stopping its
+@@ -692,6 +790,7 @@ fn set_text(&mut self, cx: &mut Cx, v: &str) {
+                 self.stop(cx);
+             } else {
+                 self.eval_body(cx);
++                self.terminate_for_memory(cx);
+             }
+             self.redraw(cx);
+         }
+@@ -732,6 +831,7 @@ pub fn call_script_fn(&mut self, cx: &mut Cx, name: LiveId, args: &[ScriptValue]
+             true
+         });
+         });
++        self.terminate_for_memory(cx);
+         called
+     }
+ 
+@@ -765,9 +865,15 @@ pub fn call_script_fn_with_strings(&mut self, cx: &mut Cx, name: LiveId, args: &
+             true
+         });
+         });
++        self.terminate_for_memory(cx);
+         called
+     }
+ 
++    /// The reason this app was stopped for exceeding its memory cap, if it was.
++    pub fn memory_error(&self) -> Option<&str> {
++        self.memory_error.as_deref()
++    }
++
+     /// Sets whether this Splash's isolate gets the networking runtime. Must be
+     /// called before the body is first evaluated (i.e. before `set_text`) — the
+     /// VM is allocated with or without network on that first eval and isn't
+@@ -957,6 +1063,9 @@ pub fn set_text(&self, cx: &mut Cx, v: &str) {
+     /// Use set_text("") to tear down the instance and revoke its callbacks.
+     pub fn reapply_text(&self, cx: &mut Cx, body: &str) {
+         if let Some(mut inner) = self.borrow_mut() {
++            if inner.memory_error.is_some() {
++                return;
++            }
+             if inner.vm_id == MAIN_SPLASH_VM_ID || body.is_empty() {
+                 inner.set_text(cx, body);
+             } else if inner.body.as_ref() != body {
+@@ -6002,3 +6111,167 @@ fn a_policed_isolate_needs_grants_for_location_the_users_lists_and_the_agent() {
+         cx.free_splash_vm(vm_id);
+     }
+ }
++
++#[cfg(test)]
++mod memory_stop_tests {
++    use super::*;
++    use crate::widget_tree::set_ui_root;
++
++    fn host_with_splash(cx: &mut Cx) -> (WidgetRef, WidgetRef) {
++        let template = cx.with_vm(|vm| {
++            crate::script_mod(vm);
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                use mod.widgets.*
++                View{ splash := Splash{} }
++            });
++            let obj = v.as_object().expect("template did not eval to an object");
++            vm.bx.heap.new_object_ref(obj)
++        });
++        let pane = cx.with_vm(|vm| {
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                View{ height: Fit }
++            });
++            WidgetRef::script_from_value(vm, v)
++        });
++        set_ui_root(cx, &pane);
++        let host = cx.with_vm(|vm| WidgetRef::script_from_value(vm, template.as_object().into()));
++        cx.widget_tree_insert_child_deep(pane.widget_uid(), live_id!(apphost), host.clone());
++        (pane, host)
++    }
++
++    fn splash_of(host: &WidgetRef, cx: &Cx) -> WidgetRef {
++        host.widget(cx, &[live_id!(splash)])
++    }
++
++    /// A cap a sliver above what the isolate already holds: the next
++    /// script allocation larger than the sliver is refused.
++    fn cap_just_above(cx: &mut Cx, splash: &WidgetRef) -> usize {
++        let vm_id = splash.borrow::<Splash>().unwrap().vm_id;
++        let retained = cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.retained_heap_bytes());
++        retained + 8 * 1024
++    }
++
++    /// A body whose `fn tick()` allocates 64 KiB in one string concat, and
++    /// arms the 1 Hz timer that fires it.
++    fn ticking_body() -> String {
++        let big = "x".repeat(64 * 1024);
++        format!("fn tick(){{ let s = \"\"; s = s + \"{big}\"; }}\nLabel{{text:\"app\"}}")
++    }
++
++    /// A body whose top-level allocates 80 KiB on every eval, so the style
++    /// reapply inside `draw_walk` refuses under a small cap.
++    fn redrawing_body() -> String {
++        let big = "x".repeat(40 * 1024);
++        format!("let junk = \"{big}\" + \"{big}\"\nLabel{{text:\"app\"}}")
++    }
++
++    /// Review point 1: a tick callback that refuses inside the event ends the
++    /// event on the spot — the error is installed and the old view never sees
++    /// the rest of it.
++    #[test]
++    fn a_tick_overflow_ends_its_event_in_the_same_frame() {
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        let (_pane, host) = host_with_splash(&mut cx);
++        let splash = splash_of(&host, &cx);
++        splash.set_text(&mut cx, &ticking_body());
++        let timer = splash.borrow::<Splash>().unwrap().tick_timer;
++        assert!(!timer.is_empty(), "the tick timer is armed");
++        let cap = cap_just_above(&mut cx, &splash);
++        splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .set_memory_bytes(&mut cx, Some(cap));
++
++        let event = Event::Timer(TimerEvent { time: Some(0.0), timer_id: timer.0 });
++        splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .handle_event(&mut cx, &event, &mut Scope::empty());
++
++        let state = splash.borrow::<Splash>().unwrap();
++        assert!(state.memory_error().is_some(), "the same event showed the error");
++        assert_eq!(state.vm_id, MAIN_SPLASH_VM_ID, "and reclaimed the isolate");
++        drop(state);
++        assert!(
++            !splash
++                .borrow_mut::<Splash>()
++                .unwrap()
++                .call_script_fn(&mut cx, id!(tick), &[]),
++            "no further isolate callback runs"
++        );
++    }
++
++    /// Review point 2: a draw that refuses inside its own script pass shows
++    /// the error in the same frame, and the draw returns done rather than the
++    /// old view's step.
++    #[test]
++    fn a_draw_overflow_shows_the_error_in_the_same_frame() {
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        let (_pane, host) = host_with_splash(&mut cx);
++        let splash = splash_of(&host, &cx);
++        splash.set_text(&mut cx, &redrawing_body());
++        let cap = cap_just_above(&mut cx, &splash);
++        splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .set_memory_bytes(&mut cx, Some(cap));
++        // Force the style-reapply re-eval that `draw_walk` runs.
++        splash.borrow_mut::<Splash>().unwrap().style_pending = true;
++
++        let step = {
++            let event = DrawEvent::default();
++            let mut draw = CxDraw::new(&mut cx, &event);
++            let mut cx2d = Cx2d::new(&mut draw);
++            cx2d.begin_root_turtle(dvec2(320.0, 240.0), Layout::default());
++            let step = splash.borrow_mut::<Splash>().unwrap().draw_walk(
++                &mut cx2d,
++                &mut Scope::empty(),
++                Walk::fill(),
++            );
++            cx2d.end_turtle();
++            step
++        };
++
++        assert!(step.is_done(), "the draw stops after the refusal");
++        let state = splash.borrow::<Splash>().unwrap();
++        assert!(state.memory_error().is_some(), "the same frame showed the error");
++        assert_eq!(state.vm_id, MAIN_SPLASH_VM_ID, "and reclaimed the isolate");
++        drop(state);
++        assert!(
++            !splash
++                .borrow_mut::<Splash>()
++                .unwrap()
++                .call_script_fn(&mut cx, id!(tick), &[]),
++            "no further isolate callback runs"
++        );
++    }
++
++    /// Review point 3: a stopped instance refuses new script; reviving it is a
++    /// new `Splash`, not a `set_text` on the old one.
++    #[test]
++    fn a_stopped_instance_refuses_new_script() {
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        let (_pane, host) = host_with_splash(&mut cx);
++        let splash = splash_of(&host, &cx);
++        splash.set_text(&mut cx, &ticking_body());
++        let cap = cap_just_above(&mut cx, &splash);
++        splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .set_memory_bytes(&mut cx, Some(cap));
++        assert!(splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .call_script_fn(&mut cx, id!(tick), &[]));
++        assert!(splash.borrow::<Splash>().unwrap().memory_error().is_some());
++        assert_eq!(splash.borrow::<Splash>().unwrap().vm_id, MAIN_SPLASH_VM_ID);
++
++        splash.set_text(&mut cx, "Label{text:\"restarted\"}");
++        let state = splash.borrow::<Splash>().unwrap();
++        assert!(state.memory_error().is_some(), "still stopped");
++        assert_eq!(state.vm_id, MAIN_SPLASH_VM_ID, "no isolate was allocated");
++        assert!(state.body.as_ref().is_empty(), "no new script was installed");
++    }
++}
+diff --git a/widgets/src/splash_policy.rs b/widgets/src/splash_policy.rs
+index 04cf78b36..076e936e2 100644
+--- a/widgets/src/splash_policy.rs
++++ b/widgets/src/splash_policy.rs
+@@ -24,7 +24,7 @@
+ //! host, URLs are allowed, and only the per-evaluation cap applies.
+ use crate::makepad_draw::makepad_platform::makepad_script_std;
+ use std::cell::RefCell;
+-use std::collections::HashMap;
++use std::collections::{HashMap, HashSet};
+ 
+ #[derive(Clone, Debug, Default)]
+ pub struct HeapPolicy {
+@@ -43,6 +43,24 @@ pub struct HeapPolicy {
+ 
+ thread_local! {
+     static POLICIES: RefCell<HashMap<usize, HeapPolicy>> = RefCell::new(HashMap::new());
++    /// Heaps stopped for exceeding their memory cap. Kept apart from
++    /// `POLICIES` so an unpoliced isolate (the host's own surface) is stopped
++    /// the same way, and so clearing a policy does not lift the stop.
++    static TERMINATED: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
++}
++
++/// Stop this heap for good: every callback, service and URL is refused from
++/// here on, whatever its policy. The host renders the error and reclaims the
++/// isolate; [`gc_policies`] forgets the mark with the heap.
++pub(crate) fn mark_terminated(heap_key: usize) {
++    TERMINATED.with(|t| {
++        t.borrow_mut().insert(heap_key);
++    });
++}
++
++/// Whether this heap was stopped for exceeding its memory cap.
++pub fn is_terminated(heap_key: usize) -> bool {
++    TERMINATED.with(|t| t.borrow().contains(&heap_key))
+ }
+ 
+ /// Set (or replace) the policy for a heap. Enforcement starts here: a heap
+@@ -76,6 +94,12 @@ pub(crate) fn gc_policies(dead_heaps: &[usize]) {
+             p.remove(heap);
+         }
+     });
++    TERMINATED.with(|t| {
++        let mut t = t.borrow_mut();
++        for heap in dead_heaps {
++            t.remove(heap);
++        }
++    });
+ }
+ 
+ /// Whether this heap is under an enforced policy at all.
+@@ -87,6 +111,9 @@ pub fn is_enforced(heap_key: usize) -> bool {
+ /// host decides, as before) or when the policy grants it; `Err` names what is
+ /// missing, in words meant for a log.
+ pub fn service_allowed(heap_key: usize, service: &str) -> Result<(), String> {
++    if is_terminated(heap_key) {
++        return Err("this app was stopped for exceeding its memory limit".into());
++    }
+     POLICIES.with(|p| {
+         let p = p.borrow();
+         let Some(policy) = p.get(&heap_key) else { return Ok(()) };
+@@ -105,6 +132,9 @@ pub fn service_allowed(heap_key: usize, service: &str) -> Result<(), String> {
+ /// May this heap reach `url`? True when no policy is set. With a policy, the
+ /// URL's host must be listed exactly; a URL with no host is refused.
+ pub fn url_allowed(heap_key: usize, url: &str) -> bool {
++    if is_terminated(heap_key) {
++        return false;
++    }
+     POLICIES.with(|p| {
+         let p = p.borrow();
+         let Some(policy) = p.get(&heap_key) else { return true };
+@@ -124,7 +154,7 @@ pub fn url_allowed(heap_key: usize, url: &str) -> bool {
+ /// protocol to any port; a contained app's way out is a request to a listed
+ /// host, and nothing wider.
+ pub fn sockets_allowed(heap_key: usize) -> bool {
+-    !is_enforced(heap_key)
++    !is_terminated(heap_key) && !is_enforced(heap_key)
+ }
+ 
+ /// May this heap know where the device is? Location is a service family
+@@ -268,8 +298,12 @@ pub fn charge(heap_key: usize, instructions: u64) -> bool {
+     })
+ }
+ 
+-/// Whether this heap may still run anything.
++/// Whether this heap may still run anything. A heap stopped for exceeding
++/// its memory cap never runs again, policed or not.
+ pub fn may_run(heap_key: usize) -> bool {
++    if is_terminated(heap_key) {
++        return false;
++    }
+     POLICIES.with(|p| p.borrow().get(&heap_key).map(|policy| !policy.exhausted).unwrap_or(true))
+ }
+ 
+@@ -459,6 +493,22 @@ fn a_policed_heap_opens_no_server_and_no_raw_socket_whatever_it_holds() {
+         assert!(makepad_script_std::script_sockets_allowed(911));
+     }
+ 
++    #[test]
++    fn a_terminated_heap_refuses_everything_and_is_forgotten_with_its_policy() {
++        gc_policies(&[912]);
++        assert!(may_run(912));
++        mark_terminated(912);
++        assert!(!may_run(912));
++        assert!(service_allowed(912, "clipboard.read").is_err());
++        assert!(!url_allowed(912, "https://anything.example/x"));
++        assert!(!sockets_allowed(912));
++        set_policy_for_heap(912, vec!["net".into()], vec!["anything.example".into()], None);
++        assert!(!may_run(912), "a policy set afterwards does not lift the stop");
++        assert!(!url_allowed(912, "https://anything.example/x"));
++        gc_policies(&[912]);
++        assert!(may_run(912), "the mark goes with the heap");
++    }
++
+     #[test]
+     fn gc_forgets_a_heap_entirely() {
+         set_policy_for_heap(906, vec![], vec![], Some(1));
+diff --git a/widgets/src/widget_async.rs b/widgets/src/widget_async.rs
+index d2f22abeb..8bdbdf0ef 100644
+--- a/widgets/src/widget_async.rs
++++ b/widgets/src/widget_async.rs
+@@ -238,6 +238,7 @@ pub fn gc_dead_splash_isolates(cx: &mut Cx) {
+             .retain(|(v, _), _| *v != vm_id);
+         state.thread_map.retain(|(v, _), _| *v != vm_id);
+         state.isolated_vms.vms.remove(&vm_id);
++        state.terminated.remove(&vm_id);
+     }
+ }
+ 
+@@ -332,6 +333,29 @@ struct IsolatedScriptVms {
+     vms: HashMap<SplashVmId, IsolatedSplashVm>,
+ }
+ 
++/// What a stopped isolate exceeded and what its heap looked like at the
++/// boundary. Recorded host-side so the `Splash` that owns the isolate can
++/// render the error and free the isolate at a safe point.
++#[derive(Clone, Debug)]
++pub struct SplashTermination {
++    /// The retained-heap ceiling the isolate was given.
++    pub limit_bytes: usize,
++    /// Accounted retained bytes when the refusal was seen.
++    pub retained_bytes: usize,
++    /// Logical bytes charged since the last collection at the boundary.
++    pub allocated_since_gc_bytes: usize,
++    /// String buffers parked for reuse before the offending run.
++    pub reuse_buffers_before: usize,
++    /// String buffers parked for reuse after the offending run.
++    pub reuse_buffers_after: usize,
++    /// Reuse capacity in bytes after the offending run.
++    pub reuse_bytes_after: usize,
++    /// Completed collections before the offending run.
++    pub collections_before: usize,
++    /// Completed collections after the offending run.
++    pub collections_after: usize,
++}
++
+ #[derive(Default)]
+ struct CxWidgetAsync {
+     done: VecDeque<WidgetAsyncDone>,
+@@ -362,6 +386,11 @@ struct CxWidgetAsync {
+     /// dropped instead of misrouted. Keys are only added once their isolate is
+     /// gone and removed again if a later heap is allocated at the same address.
+     dead_heaps: std::collections::HashSet<usize>,
++    /// Isolates stopped for exceeding their memory cap, awaiting the host's
++    /// termination pass. Inserted once at the boundary; removed by
++    /// [`take_splash_termination`] when that pass runs, or when the isolate is
++    /// reclaimed.
++    terminated: HashMap<SplashVmId, SplashTermination>,
+ }
+ 
+ #[derive(Default)]
+@@ -408,6 +437,10 @@ fn with_isolate_installed<R>(cx: &mut Cx, vm_id: SplashVmId, f: impl FnOnce(&mut
+     let outer_std = std::mem::replace(&mut cx.script_data.std, isolated.std);
+     let outer_vm = cx.script_vm.take();
+     cx.script_vm = isolated.vm.take();
++    let before_stats = cx.script_vm.as_ref().map(|bx| {
++        let stats = bx.heap.memory_stats();
++        (stats.reuse_buffers, stats.collections)
++    });
+ 
+     // Whether `f` returns or unwinds, the isolate goes back into the table
+     // and the outer VM back onto `Cx`: a panic caught above this frame (a
+@@ -420,6 +453,10 @@ fn with_isolate_installed<R>(cx: &mut Cx, vm_id: SplashVmId, f: impl FnOnce(&mut
+     isolated.std = std::mem::replace(&mut cx.script_data.std, outer_std);
+ 
+     cx.global::<CxWidgetAsync>().current_vm_id = previous_vm_id;
++    // The one safe boundary every untrusted entry passes through: with the
++    // isolate off `Cx` and nothing of its running, its heap can be read for
++    // the retained-cap refusal the interpreter has just bailed on.
++    record_splash_heap_overflow(cx, vm_id, &mut isolated, before_stats);
+     cx.global::<CxWidgetAsync>()
+         .isolated_vms
+         .vms
+@@ -431,6 +468,91 @@ fn with_isolate_installed<R>(cx: &mut Cx, vm_id: SplashVmId, f: impl FnOnce(&mut
+     }
+ }
+ 
++/// Whether a stopped isolate's heap crossed its retained cap during the entry
++/// that just returned. On the first crossing, mark the heap terminated (every
++/// later callback, service and URL is refused) and record the numbers for the
++/// host's error view. Idempotent: only one termination is recorded.
++fn record_splash_heap_overflow(
++    cx: &mut Cx,
++    vm_id: SplashVmId,
++    isolated: &mut IsolatedSplashVm,
++    before: Option<(usize, usize)>,
++) {
++    let Some(bx) = isolated.vm.as_mut() else {
++        return;
++    };
++    let heap = &mut bx.heap;
++    let Some(limit) = heap.max_heap_bytes() else {
++        // No cap (the main VM or an uncapped isolate): drop any stale flag so
++        // it can never be misread as an overflow here.
++        heap.take_heap_limit_exceeded();
++        return;
++    };
++    let flagged = heap.take_heap_limit_exceeded();
++    if !flagged && heap.accounted_heap_bytes() <= limit {
++        return;
++    }
++    crate::splash_policy::mark_terminated(heap.heap_key());
++    let state = cx.global::<CxWidgetAsync>();
++    if state.terminated.contains_key(&vm_id) {
++        return;
++    }
++    let stats = heap.memory_stats();
++    let (reuse_buffers_before, collections_before) = before.unwrap_or((0, 0));
++    state.terminated.insert(
++        vm_id,
++        SplashTermination {
++            limit_bytes: limit,
++            retained_bytes: heap.accounted_heap_bytes(),
++            allocated_since_gc_bytes: stats.allocated_since_gc_bytes,
++            reuse_buffers_before,
++            reuse_buffers_after: stats.reuse_buffers,
++            reuse_bytes_after: stats.reuse_bytes,
++            collections_before,
++            collections_after: stats.collections,
++        },
++    );
++    crate::makepad_platform::error!(
++        "splash isolate {vm_id:?} stopped: heap cap {limit} bytes exceeded (retained {}, \
++         allocated since GC {}, reuse {}/{} bytes, collections {} -> {})",
++        heap.accounted_heap_bytes(),
++        stats.allocated_since_gc_bytes,
++        stats.reuse_buffers,
++        stats.reuse_bytes,
++        collections_before,
++        stats.collections,
++    );
++}
++
++/// Re-read an isolate left in the table by [`with_isolate`] (a host dispatch
++/// or draw) for an overflow, and record it. [`with_isolate_installed`] covers
++/// every `with_script_vm_id` entry; this covers the host's own entry.
++fn detect_splash_heap_overflow(cx: &mut Cx, vm_id: SplashVmId) {
++    if vm_id == MAIN_SPLASH_VM_ID {
++        return;
++    }
++    let mut isolated = match cx.global::<CxWidgetAsync>().isolated_vms.vms.remove(&vm_id) {
++        Some(isolated) => isolated,
++        None => return,
++    };
++    record_splash_heap_overflow(cx, vm_id, &mut isolated, None);
++    cx.global::<CxWidgetAsync>()
++        .isolated_vms
++        .vms
++        .insert(vm_id, isolated);
++}
++
++/// Take the recorded termination for `vm_id`, if any. The host consumes it
++/// once when it replaces the isolate's view and reclaims the isolate.
++pub(crate) fn take_splash_termination(cx: &mut Cx, vm_id: SplashVmId) -> Option<SplashTermination> {
++    cx.global::<CxWidgetAsync>().terminated.remove(&vm_id)
++}
++
++/// Whether `vm_id` was stopped for exceeding its memory cap.
++fn splash_vm_stopped(cx: &mut Cx, vm_id: SplashVmId) -> bool {
++    cx.global::<CxWidgetAsync>().terminated.contains_key(&vm_id)
++}
++
+ /// Runs isolate-side work and CONTAINS any panic it raises: the host app must
+ /// survive anything a mini-app isolate does. Returns false when a panic was
+ /// contained; the isolate is left degraded (a Force Stop cleans it up).
+@@ -674,6 +796,11 @@ fn script_ref_vm_id(&mut self, script_ref: &ScriptObjectRef) -> Option<SplashVmI
+         }
+         let state = self.global::<CxWidgetAsync>();
+         if let Some(vm_id) = state.heap_to_vm.get(&heap_key).copied() {
++            // A stopped isolate is treated as gone: a widget it minted must
++            // not run its callback after the memory stop.
++            if state.terminated.contains_key(&vm_id) {
++                return None;
++            }
+             return Some(vm_id);
+         }
+         // Not a live isolate's heap. Either the app VM's own — the common case,
+@@ -716,6 +843,9 @@ pub(crate) fn handle_splash_network_responses(
+     if vm_id == MAIN_SPLASH_VM_ID || responses.is_empty() {
+         return;
+     }
++    if splash_vm_stopped(cx, vm_id) {
++        return;
++    }
+ 
+     match cx.global::<CxWidgetAsync>().isolated_vms.vms.get(&vm_id) {
+         Some(isolated) if isolated.network_enabled => {}
+@@ -1413,6 +1543,9 @@ fn pump_widget_async(cx: &mut Cx) -> bool {
+             .pop_front();
+         if let Some(req) = req {
+             progressed = true;
++            if splash_vm_stopped(cx, req.vm_id) {
++                continue;
++            }
+             contain_isolate_panic("widget->script dispatch", || {
+                 cx.with_script_vm_id(req.vm_id, |vm| {
+                     if req.script_fn.as_object() != ScriptObject::ZERO {
+@@ -1441,6 +1574,9 @@ fn pump_widget_async(cx: &mut Cx) -> bool {
+             .pop_front();
+         if let Some(req) = req {
+             progressed = true;
++            if splash_vm_stopped(cx, req.vm_id) {
++                continue;
++            }
+             contain_isolate_panic("script->widget dispatch", || {
+             let ret = cx.with_script_vm_id_thread(req.vm_id, req.caller_thread, |vm| {
+                 let widget_ref = vm.with_cx(|cx| cx.widget_tree().widget(req.target_uid));
+@@ -1486,6 +1622,9 @@ fn pump_widget_async(cx: &mut Cx) -> bool {
+         let done = cx.global::<CxWidgetAsync>().done.pop_front();
+         if let Some(done) = done {
+             progressed = true;
++            if splash_vm_stopped(cx, done.vm_id) {
++                continue;
++            }
+             contain_isolate_panic("async result delivery", || {
+                 cx.with_script_vm_id(done.vm_id, |vm| {
+                     let widget_ref = vm.with_cx(|cx| cx.widget_tree().widget(done.target_uid));
+@@ -1550,6 +1689,14 @@ fn script_timer_dispatch_hook(cx: &mut Cx, timer: &CxScriptTimer, time: ScriptVa
+     if heap_key == 0 {
+         return false;
+     }
++    // A stopped isolate's timers are dropped on the spot rather than left to
++    // fire into a heap that must not run anything again.
++    if crate::splash_policy::is_terminated(heap_key) {
++        cx.stop_timer(timer.timer);
++        let id = timer.id;
++        cx.script_data.timers.timers.retain(|t| t.id != id);
++        return true;
++    }
+     let vm_id = cx
+         .global::<CxWidgetAsync>()
+         .heap_to_vm
+@@ -1698,6 +1845,7 @@ pub fn with_isolate<C: IsolateCx, R>(cx: &mut C, vm_id: SplashVmId, f: impl FnOn
+     let entry = enter_isolate(cx.isolate_cx(), vm_id);
+     let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(cx)));
+     leave_isolate(cx.isolate_cx(), entry);
++    detect_splash_heap_overflow(cx.isolate_cx(), vm_id);
+     match out {
+         Ok(out) => out,
+         Err(payload) => std::panic::resume_unwind(payload),
+@@ -2009,6 +2157,28 @@ fn entering_an_isolate_makes_it_the_current_vm_and_leaving_restores_the_outer_on
+         leave_isolate(&mut cx, entry);
+         cx.free_splash_vm(vm_id);
+     }
++
++    /// What a widget callback reached during `Splash::draw_walk` sees when the
++    /// draw does not pre-install the isolate: `with_script_vm_id` installs it
++    /// under `with_splash_budget`, so a runaway callback is stopped on time.
++    /// A regression that pre-installs the isolate for the whole draw takes the
++    /// already-current path and silently drops that budget.
++    #[test]
++    fn a_callback_reached_during_a_draw_runs_under_the_time_budget() {
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        cx.with_vm(crate::script_mod);
++        let vm_id = cx.alloc_splash_vm();
++        let stopped = cx.with_script_vm_id(vm_id, |vm| {
++            let value = vm.eval(crate::makepad_script::script! {
++                let total = 0
++                for i in 0..100000000 { total = total + 1 }
++                total
++            });
++            value.is_err()
++        });
++        assert!(stopped, "the time budget stops a runaway callback");
++        cx.free_splash_vm(vm_id);
++    }
+ }
+ 
+ #[cfg(test)]
+@@ -2480,4 +2650,112 @@ fn show(){ ui.out.set_text("read: " + ui.entry.text()) }
+         pump_widget_async(&mut cx);
+         assert_eq!(out_text(&out), "echo: yo");
+     }
++
++    /// t06: an isolate that crosses its memory cap is stopped at the script
++    /// boundary, shows the host's error with the real limit, runs no further
++    /// callback, and leaves its committed files alone. No mocks: a real `Cx`,
++    /// a real `Splash`, a real cap.
++    #[test]
++    fn a_memory_overflow_stops_the_isolate_once_and_preserves_committed_files() {
++        let mut cx = Cx::new(Box::new(|_, _| {}));
++        let template = cx.with_vm(|vm| {
++            crate::script_mod(vm);
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                use mod.widgets.*
++                View{ splash := Splash{} }
++            });
++            let obj = v.as_object().expect("template did not eval to an object");
++            vm.bx.heap.new_object_ref(obj)
++        });
++        let pane = cx.with_vm(|vm| {
++            let v = vm.eval(crate::makepad_script::script! {
++                use mod.prelude.widgets.*
++                View{ height: Fit }
++            });
++            WidgetRef::script_from_value(vm, v)
++        });
++        set_ui_root(&mut cx, &pane);
++        let host = cx.with_vm(|vm| WidgetRef::script_from_value(vm, template.as_object().into()));
++        cx.widget_tree_insert_child_deep(pane.widget_uid(), live_id!(apphost), host.clone());
++        let splash = host.widget(&cx, &[live_id!(splash)]);
++
++        // Real app data with a committed file the stop must not touch. The
++        // directory lives under Cargo's git-ignored target tree, never /tmp.
++        let sandbox = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
++            .join("../target/loom-tests")
++            .join(format!(
++                "memory-stop-{}-{}",
++                std::process::id(),
++                splash.widget_uid().0,
++            ));
++        std::fs::create_dir_all(&sandbox).expect("sandbox");
++        let committed = sandbox.join("committed.txt");
++        std::fs::write(&committed, b"committed-data").expect("write committed");
++        splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .set_sandbox_dir(&mut cx, Some(sandbox.clone()));
++
++        // A 64 KiB literal the grow() hook concatenates: one allocation over
++        // any small cap. The literal itself is allocated before the cap is set.
++        let big = "x".repeat(64 * 1024);
++        let body = format!("fn grow(){{ let s = \"\"; s = s + \"{big}\"; }}\nLabel{{text:\"app\"}}");
++        splash.set_text(&mut cx, &body);
++        let heap_key = splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .isolate_heap_key(&mut cx)
++            .expect("isolate allocated");
++        let vm_id = cx
++            .global::<CxWidgetAsync>()
++            .heap_to_vm
++            .get(&heap_key)
++            .copied()
++            .expect("isolate vm");
++        let retained = cx.with_script_vm_id(vm_id, |vm| vm.bx.heap.retained_heap_bytes());
++        let cap = retained + 8 * 1024;
++        splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .set_memory_bytes(&mut cx, Some(cap));
++
++        assert!(splash
++            .borrow_mut::<Splash>()
++            .unwrap()
++            .call_script_fn(&mut cx, live_id!(grow), &[]));
++
++        // Stopped exactly once: the isolate is gone from the live table and the
++        // policy mark went with its heap.
++        assert!(!cx.global::<CxWidgetAsync>().heap_to_vm.contains_key(&heap_key));
++        assert!(!crate::splash_policy::is_terminated(heap_key));
++        let message = splash
++            .borrow::<Splash>()
++            .unwrap()
++            .memory_error()
++            .expect("memory error recorded")
++            .to_string();
++        assert!(message.contains("内存"), "{message}");
++        assert!(message.contains(&cap.to_string()), "{message}");
++        assert!(splash.text().is_empty(), "body cleared");
++        assert!(
++            !splash
++                .borrow_mut::<Splash>()
++                .unwrap()
++                .call_script_fn(&mut cx, live_id!(grow), &[]),
++            "no callback runs after the stop"
++        );
++
++        // The host-owned error view is installed and holds a Label.
++        {
++            let state = splash.borrow::<Splash>().unwrap();
++            assert_eq!(state.view.children.len(), 1, "the error view is installed");
++            assert!(state.view.children[0]
++                .1
++                .borrow::<crate::label::Label>()
++                .is_some());
++        }
++
++        assert_eq!(std::fs::read(&committed).expect("read committed"), b"committed-data");
++    }
+ }
