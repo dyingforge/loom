@@ -35,6 +35,26 @@ python3 scripts/run_client.py
 
 `run_client.py` 会核对构建标记，未按锁定来源构建的旧原生宿主会被拒绝。客户端通过公开 HTTPS 服务请求模型，域名需要同时出现在 `bundle/main.splash` 的 `api_origin` 和 `bundle/manifest.json` 的 `network.hosts` 中。
 
+## 内存统计诊断
+
+隔离脚本的内存统计默认关闭。需要时在启动命令前设置 `LOOM_MEMORY_TELEMETRY=1`：
+
+```sh
+LOOM_MEMORY_TELEMETRY=1 python3 scripts/run_client.py
+```
+
+每次隔离脚本入口（一次求值、回调或绘制）向客户端日志 `<数据目录>/card-host.log` 写一条结构化 JSON，默认数据目录为 `.local-state/calendar`，即日志在 `.local-state/calendar/card-host.log`。字段含义：
+
+- `kind`：固定为 `loom.memory.entry`。
+- `vm`：隔离 VM 标识。
+- `retainedBefore`、`retainedAfter`：该次入口前后堆的保留字节估算。
+- `allocatedBytes`：该次入口实际计费的字节数，为累计分配值的前后差值，跨回收仍然准确。
+- `collectionsBefore`、`collectionsAfter`：前后完成的标记清扫回收次数。
+- `reuseBuffersBefore`、`reuseBuffersAfter`：前后停放复用的字符串缓冲区数量。
+- `reuseBytesBefore`、`reuseBytesAfter`：前后停放复用的字符串缓冲区总容量。
+
+诊断只记录数字，不记录脚本值、用户输入、恢复凭据或网络正文。未设置该变量时不写这些日志，脚本时间预算与超限终止行为不变。
+
 当前开发连接通过已经运行的 Cloudflare 临时隧道访问本机服务。临时连接在隧道终止后失效，重新启动隧道需要更新上述两个位置。正式演示设备需要保持服务和隧道运行，或者配置持续运行的 HTTPS 服务。
 
 ## 演示与验证

@@ -14,13 +14,14 @@
       "url": "https://github.com/OctoSense-org/makepad.git",
       "checkout": ".scratch/native/makepad",
       "upstream": "c155f61d0e1600d2ec474209374444a38a09a470",
-      "fix": "6b2b1dfe30a44e4f74da2b27533f703657d2f6b7",
+      "fix": "08f0e08aa7873b7ce1a633f86185a52be63a017d",
       "bundle": "native/bundles/makepad.bundle",
       "bundle_ref": "refs/loom-bundle/makepad",
-      "bundle_sha256": "726868f7853d984a3d197b048ed8353a449b7e8cb0baf8e155c1f0ffd3485360",
+      "bundle_sha256": "a006202eda0f511abbac3b9c067a2f4eb5c5e8cd927212b39b92af7812ae239e",
       "patches": [
         "native/patches/makepad-memory.patch",
-        "native/patches/makepad-terminate.patch"
+        "native/patches/makepad-terminate.patch",
+        "native/patches/makepad-telemetry.patch"
       ]
     },
     {
