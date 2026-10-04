@@ -471,10 +471,10 @@ index 6b45917..ec50443 100644
      match args::parse(std::env::args().skip(1)) {
 diff --git a/crates/card-host/src/state.rs b/crates/card-host/src/state.rs
 new file mode 100644
-index 0000000..305cef2
+index 0000000..d715cbc
 --- /dev/null
 +++ b/crates/card-host/src/state.rs
-@@ -0,0 +1,1235 @@
+@@ -0,0 +1,1315 @@
 +//! The app's own business state, kept in SQLite behind a host-owned loopback
 +//! service.
 +//!
@@ -505,12 +505,14 @@ index 0000000..305cef2
 +//! version, writes the whole business record, reads it back, and only then
 +//! answers `{version, business}`.
 +//!
-+//! Storage is bounded by the app's whole `storage` grant: the check sums every
-+//! file already in the jail (the SQLite file, the old JSON records, anything the
-+//! app wrote) plus the net payload bytes this write adds, and refuses when that
-+//! would pass the quota. The count is in bytes, so Chinese text is charged at
-+//! its UTF-8 length, not its character count. The request body itself is bounded
-+//! by the same grant before it is buffered.
++//! Storage is bounded by the app's whole `storage` grant. After the rows are
++//! written, but before the transaction commits, the service measures the jail
++//! as it will be: every file except the database itself (the old JSON records,
++//! anything the app wrote, the rollback journal) plus the database's actual
++//! page count (`PRAGMA page_count * PRAGMA page_size`). That reflects page,
++//! index and journal growth and never adds payload bytes the database already
++//! contains. A total above the quota rolls the transaction back. The request
++//! body itself is bounded by the same grant before it is buffered.
 +//!
 +//! On the first read the service migrates the app's old
 +//! `calendar-a.json`/`calendar-b.json` records in one transaction. Every
@@ -844,6 +846,19 @@ index 0000000..305cef2
 +        self.quota.min(MAX_REQUEST_BYTES)
 +    }
 +
++    /// Reject the current transaction when the jail as it stands would pass
++    /// the quota. Called after the rows are written and before commit, so the
++    /// database's live page count is part of the measurement.
++    fn check_quota(jail_root: &Path, quota: u64, tx: &Connection) -> Result<(), StoreError> {
++        let total = jail_bytes_except_db(jail_root)?.saturating_add(db_page_bytes(tx)?);
++        if quota != 0 && total <= quota {
++            return Ok(());
++        }
++        Err(StoreError::Quota(format!(
++            "the app's storage quota is exceeded: {total} bytes occupied, {quota} allowed"
++        )))
++    }
++
 +    fn meta_flag(&self, key: &str) -> rusqlite::Result<bool> {
 +        self.conn
 +            .query_row("SELECT value FROM meta WHERE key = ?1", params![key], |row| {
@@ -882,12 +897,6 @@ index 0000000..305cef2
 +                )));
 +            }
 +            let text = business.to_string();
-+            let used = jail_used(&self.jail_root)?;
-+            if !fits(self.quota, used, text.len() as i64) {
-+                return Err(StoreError::Quota(
-+                    "the app's storage quota does not fit its migrated records".into(),
-+                ));
-+            }
 +            tx.execute(
 +                "INSERT INTO business(project_id, version, business) VALUES(?1, 0, ?2)
 +                 ON CONFLICT(project_id) DO UPDATE SET version = excluded.version, business = excluded.business",
@@ -899,6 +908,7 @@ index 0000000..305cef2
 +             ON CONFLICT(key) DO UPDATE SET value = '1'",
 +            [],
 +        )?;
++        Self::check_quota(&self.jail_root, self.quota, &tx)?;
 +        tx.commit()?;
 +        self.migrated = true;
 +        Ok(())
@@ -982,28 +992,6 @@ index 0000000..305cef2
 +            .optional()?;
 +        let applied = existing.is_none_or(|current| revision > current);
 +        if applied {
-+            // Count the previous row's bytes from the strings themselves, so
-+            // a multi-byte answer is charged at its UTF-8 length.
-+            let previous_bytes: i64 = tx
-+                .query_row(
-+                    "SELECT goal, deadline, answer FROM draft
-+                     WHERE project_id = ?1 AND question_id = ?2",
-+                    params![project_id, question_id],
-+                    |row| {
-+                        Ok(row.get::<_, String>(0)?.len() as i64
-+                            + row.get::<_, String>(1)?.len() as i64
-+                            + row.get::<_, String>(2)?.len() as i64)
-+                    },
-+                )
-+                .optional()?
-+                .unwrap_or(0);
-+            let next_bytes = (goal.len() + deadline.len() + answer.len()) as i64;
-+            let used = jail_used(&self.jail_root)?;
-+            if !fits(self.quota, used, next_bytes - previous_bytes) {
-+                return Err(StoreError::Quota(
-+                    "the app's storage quota does not fit this draft".into(),
-+                ));
-+            }
 +            tx.execute(
 +                "INSERT INTO draft(project_id, question_id, revision, goal, deadline, answer)
 +                 VALUES(?1, ?2, ?3, ?4, ?5, ?6)
@@ -1015,6 +1003,7 @@ index 0000000..305cef2
 +                 WHERE excluded.revision > draft.revision",
 +                params![project_id, question_id, revision, goal, deadline, answer],
 +            )?;
++            Self::check_quota(&self.jail_root, self.quota, &tx)?;
 +        }
 +        let current: i64 = tx
 +            .query_row(
@@ -1049,30 +1038,21 @@ index 0000000..305cef2
 +        }
 +        // A stored record that no longer parses is corruption. Refuse rather
 +        // than let a new record silently replace it.
-+        let previous_bytes = match existing.and_then(|(_, business)| business) {
-+            None => 0,
-+            Some(text) => {
-+                serde_json::from_str::<Value>(&text).map_err(|e| {
-+                    StoreError::Internal(format!(
-+                        "state database: the stored business record is not valid JSON: {e}"
-+                    ))
-+                })?;
-+                text.len() as i64
-+            }
-+        };
-+        let text = business.to_string();
-+        let used = jail_used(&self.jail_root)?;
-+        if !fits(self.quota, used, text.len() as i64 - previous_bytes) {
-+            return Err(StoreError::Quota(
-+                "the app's storage quota does not fit this record".into(),
-+            ));
++        if let Some(text) = existing.and_then(|(_, business)| business) {
++            serde_json::from_str::<Value>(&text).map_err(|e| {
++                StoreError::Internal(format!(
++                    "state database: the stored business record is not valid JSON: {e}"
++                ))
++            })?;
 +        }
++        let text = business.to_string();
 +        let next_version = current + 1;
 +        tx.execute(
 +            "INSERT INTO business(project_id, version, business) VALUES(?1, ?2, ?3)
 +             ON CONFLICT(project_id) DO UPDATE SET version = excluded.version, business = excluded.business",
 +            params![project_id, next_version, text],
 +        )?;
++        Self::check_quota(&self.jail_root, self.quota, &tx)?;
 +        // Read the just-written record back inside the same transaction: the
 +        // answer is only returned when the stored bytes are what was sent.
 +        let row: Option<(i64, Option<String>)> = tx
@@ -1102,8 +1082,10 @@ index 0000000..305cef2
 +}
 +
 +/// Bytes already occupied by everything in the jail: the SQLite file, the old
-+/// JSON records and anything else the app wrote. The quota is a whole-jail
-+/// limit, so a write is charged against this, not against payload text alone.
++/// JSON records and anything else the app wrote. Used by the tests to measure
++/// a quota baseline; the live check is [`jail_bytes_except_db`] plus the
++/// database's page count.
++#[cfg(test)]
 +fn jail_used(jail_root: &Path) -> Result<u64, StoreError> {
 +    fn walk(dir: &Path, total: &mut u64) -> std::io::Result<()> {
 +        for entry in std::fs::read_dir(dir)? {
@@ -1123,12 +1105,38 @@ index 0000000..305cef2
 +    Ok(total)
 +}
 +
-+/// Does `used + delta` fit the quota? A non-positive delta always fits.
-+fn fits(quota: u64, used: u64, delta: i64) -> bool {
-+    if delta <= 0 {
-+        return true;
++/// The database's actual size in the current transaction, including pages the
++/// uncommitted writes have allocated. `PRAGMA page_count` is the pager's live
++/// size, so it reflects page, index and overflow growth before commit.
++fn db_page_bytes(conn: &Connection) -> Result<u64, StoreError> {
++    let page_size: i64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
++    let page_count: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0))?;
++    Ok((page_size.max(0) as u64).saturating_mul(page_count.max(0) as u64))
++}
++
++/// Every file in the jail except the database file itself: the old JSON
++/// records, the app's own files and the rollback journal. The database's own
++/// bytes come from [`db_page_bytes`], so payload is never counted twice.
++fn jail_bytes_except_db(jail_root: &Path) -> Result<u64, StoreError> {
++    let db_path = jail_root.join(STATE_DB_FILE);
++    fn walk(dir: &Path, db: &Path, total: &mut u64) -> std::io::Result<()> {
++        for entry in std::fs::read_dir(dir)? {
++            let entry = entry?;
++            let path = entry.path();
++            let metadata = entry.metadata()?;
++            if metadata.is_dir() {
++                walk(&path, db, total)?;
++            } else if path != db {
++                *total = total.saturating_add(metadata.len());
++            }
++        }
++        Ok(())
 +    }
-+    quota != 0 && used.saturating_add(delta as u64) <= quota
++    let mut total = 0;
++    walk(jail_root, &db_path, &mut total).map_err(|e| {
++        StoreError::Internal(format!("state service: cannot measure the jail: {e}"))
++    })?;
++    Ok(total)
 +}
 +
 +/// Read and validate both legacy files, returning the newest migrated
@@ -1239,17 +1247,21 @@ index 0000000..305cef2
 +        dir
 +    }
 +
-+    /// Start a service whose quota is measured from the real jail, so the
-+    /// test never assumes a quota below the database's own size. The probe
-+    /// runs one read first so the one-time migration bookkeeping is part of
-+    /// the measured steady state.
-+    fn start_with_allowance(jail: &Path, allowance: u64) -> StateService {
++    /// The steady jail size after the one-time migration bookkeeping: the
++    /// quota baseline a test measures against.
++    fn steady_jail_bytes(jail: &Path) -> u64 {
 +        let probe = StateService::start(jail, 64 * 1024 * 1024).expect("probe service");
 +        let (status, body) = get(probe.origin(), "/v1/state?projectId=__measure__");
 +        assert_eq!(status, 200, "{body}");
 +        drop(probe);
-+        let used = jail_used(jail).expect("measure jail");
-+        StateService::start(jail, used + allowance).expect("service with a measured quota")
++        jail_used(jail).expect("measure jail")
++    }
++
++    /// Start a service whose quota is measured from the real jail, so the
++    /// test never assumes a quota below the database's own size.
++    fn start_with_allowance(jail: &Path, allowance: u64) -> StateService {
++        StateService::start(jail, steady_jail_bytes(jail) + allowance)
++            .expect("service with a measured quota")
 +    }
 +
 +    fn agent() -> ureq::Agent {
@@ -1569,50 +1581,118 @@ index 0000000..305cef2
 +    }
 +
 +    #[test]
-+    fn a_write_beyond_the_quota_is_refused_without_changing_the_record() {
-+        let jail = test_jail("quota");
-+        let service = start_with_allowance(&jail, 512);
++    fn page_count_reflects_uncommitted_growth() {
++        let jail = test_jail("page-count");
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        conn.execute_batch("CREATE TABLE t(v TEXT);").unwrap();
++        let before: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0)).unwrap();
++        conn.execute_batch("BEGIN").unwrap();
++        conn.execute("INSERT INTO t(v) VALUES(?1)", params!["x".repeat(200_000)])
++            .unwrap();
++        let during: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0)).unwrap();
++        conn.execute_batch("ROLLBACK").unwrap();
++        assert!(during > before, "page_count must grow before commit: {before} -> {during}");
++    }
++
++    #[test]
++    fn a_write_that_grows_the_database_past_the_quota_is_refused() {
++        let jail = test_jail("quota-page-growth");
++        // One byte of headroom: the text would fit the budget, the pages the
++        // database allocates for it do not.
++        let service = start_with_allowance(&jail, 1);
 +        let base = service.origin();
 +        let (status, body) = post(
 +            base,
-+            "/v1/commit",
-+            &json!({"projectId": "loom", "expectedVersion": 0, "business": {"blob": "x".repeat(1024)}}),
++            "/v1/draft",
++            &json!({"projectId": "loom", "questionId": "q1", "revision": 1,
++                    "goal": "目标", "deadline": "", "answer": "中".repeat(2000)}),
 +        );
 +        assert_eq!(status, 507, "{body}");
 +
 +        let (_, state) = get(base, "/v1/state?projectId=loom");
-+        assert_eq!(state["version"], 0);
-+        assert!(state["business"].is_null());
++        assert!(state["draft"].is_null());
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        let rows: i64 = conn
++            .query_row("SELECT COUNT(*) FROM draft", [], |row| row.get(0))
++            .unwrap();
++        assert_eq!(rows, 0);
 +    }
 +
 +    #[test]
-+    fn the_quota_counts_existing_files_and_chinese_bytes() {
-+        let jail = test_jail("quota-files");
-+        // A file the app already wrote shares the same jail budget. Write it
-+        // before the quota is measured so the allowance is the free room.
-+        std::fs::write(jail.join("old.bin"), vec![0u8; 8192]).unwrap();
-+        let service = start_with_allowance(&jail, 1024);
-+
++    fn an_over_quota_jail_refuses_small_and_shrinking_writes() {
++        let jail = test_jail("quota-over");
++        let service = start_with_allowance(&jail, 64 * 1024);
 +        let base = service.origin();
-+        // 400 Chinese characters are 1200 UTF-8 bytes, past the 1024-byte
-+        // allowance left by the old file and the database.
++        let business = json!({"project": {"id": "loom"}, "blob": "x".repeat(2048)});
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": business}),
++        );
++        assert_eq!(status, 200, "{body}");
++
++        // The app writes a file of its own, so the jail is now over quota.
++        std::fs::write(jail.join("big.bin"), vec![0u8; 256 * 1024]).unwrap();
++
++        // A tiny Chinese draft is refused.
 +        let (status, body) = post(
 +            base,
 +            "/v1/draft",
 +            &json!({"projectId": "loom", "questionId": "q1", "revision": 1,
-+                    "goal": "目标", "deadline": "", "answer": "中".repeat(400)}),
++                    "goal": "目标", "deadline": "", "answer": "中"}),
 +        );
 +        assert_eq!(status, 507, "{body}");
 +
-+        // A short Chinese answer fits.
++        // A commit whose text is far shorter than the stored record is
++        // refused too: a shrinking write must not slip past an over-quota jail.
 +        let (status, body) = post(
 +            base,
-+            "/v1/draft",
-+            &json!({"projectId": "loom", "questionId": "q1", "revision": 1,
-+                    "goal": "目标", "deadline": "", "answer": "好的"}),
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 1, "business": {"tiny": true}}),
 +        );
-+        assert_eq!(status, 200, "{body}");
-+        assert_eq!(body["applied"], true);
++        assert_eq!(status, 507, "{body}");
++
++        // Records are untouched.
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["version"], 1);
++        assert_eq!(state["business"], business);
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        let rows: i64 = conn
++            .query_row("SELECT COUNT(*) FROM draft", [], |row| row.get(0))
++            .unwrap();
++        assert_eq!(rows, 0);
++    }
++
++    #[test]
++    fn repeated_updates_never_exceed_the_quota() {
++        let jail = test_jail("quota-repeat");
++        let quota = steady_jail_bytes(&jail) + 16 * 1024;
++        let service = StateService::start(&jail, quota).unwrap();
++        let base = service.origin();
++        let mut accepted = 0;
++        for step in 0..8 {
++            let text = if step % 2 == 0 { "x".repeat(4096) } else { "y".repeat(64) };
++            let (status, body) = post(
++                base,
++                "/v1/commit",
++                &json!({"projectId": "loom", "expectedVersion": accepted,
++                        "business": {"step": step, "text": text}}),
++            );
++            assert!(
++                status == 200 || status == 507,
++                "unexpected status {status} at step {step}: {body}"
++            );
++            if status == 200 {
++                accepted += 1;
++            }
++            // However the writes went, the jail never sits above the quota.
++            assert!(
++                jail_used(&jail).unwrap() <= quota,
++                "the jail grew past its quota at step {step}"
++            );
++        }
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["version"], json!(accepted));
 +    }
 +
 +    #[test]
