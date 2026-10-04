@@ -1,0 +1,563 @@
+diff --git a/platform/script/src/gc.rs b/platform/script/src/gc.rs
+index d12aac784..69bc68864 100644
+--- a/platform/script/src/gc.rs
++++ b/platform/script/src/gc.rs
+@@ -24,6 +24,9 @@ pub struct ScriptHeapGcLast {
+     pub pods: usize,
+     pub handles: usize,
+     pub regexes: usize,
++    /// Retained-bytes estimate at the end of the collection, the occupancy
++    /// baseline for the byte-growth heuristic.
++    pub bytes: usize,
+ }
+ 
+ /// Lightweight mark item for GC work list - just the reference, no debug info
+@@ -613,7 +616,7 @@ pub fn sweep(&mut self, log_stats: bool) {
+                         self.strings.set_at(i, None);
+                         if let Some(mut s) = Arc::into_inner(k.0) {
+                             s.clear();
+-                            self.strings_reuse.push(s);
++                            Self::park_reuse_string(&mut self.strings_reuse, s);
+                         }
+                         // Increment generation, then push ref with new generation
+                         self.strings.free_slot(i as u32);
+@@ -713,6 +716,14 @@ pub fn sweep(&mut self, log_stats: bool) {
+                 rex_static, rex_alive, rex_removed);
+         }
+ 
++        // A collection is the one point where retained capacity can shrink.
++        // Measure once and use it for both the GC baseline and the retained
++        // cap's headroom.
++        let retained_bytes = self.estimated_heap_bytes();
++        self.apply_reconciled_heap_bytes(retained_bytes);
++        self.allocated_since_gc_bytes = 0;
++        self.gc_count = self.gc_count.saturating_add(1);
++
+         // Record heap statistics after GC for triggering next cycle
+         self.gc_last = ScriptHeapGcLast {
+             objects: self.objects.len() - self.objects_free.len(),
+@@ -721,10 +732,8 @@ pub fn sweep(&mut self, log_stats: bool) {
+             pods: self.pods.len() - self.pods_free.len(),
+             handles: self.handles.len() - self.handles_free.len(),
+             regexes: self.regexes.len() - self.regexes_free.len(),
++            bytes: retained_bytes,
+         };
+-        // A collection is the one point where retained capacity can shrink;
+-        // re-derive the retained-heap cap's headroom from the swept state.
+-        self.reconcile_heap_bytes_if_limited();
+     }
+ 
+     /// Check if garbage collection should be triggered.
+@@ -775,6 +784,25 @@ pub fn needs_gc(&self) -> bool {
+             return true;
+         }
+ 
++        // The count thresholds above are blind to a few large allocations.
++        // Reclaim at the next safe boundary when either the estimated retained
++        // bytes have grown by the same factor, or a burst of transient
++        // allocation happened while occupancy stayed flat.
++        const MIN_GC_BYTES: usize = 256 * 1024;
++        const MIN_ALLOCATED_BYTES: usize = 512 * 1024;
++
++        let retained = self
++            .gc_last
++            .bytes
++            .saturating_add(self.allocated_since_gc_bytes);
++        if retained >= MIN_GC_BYTES && retained >= self.gc_last.bytes.saturating_mul(GROWTH_FACTOR)
++        {
++            return true;
++        }
++        if self.allocated_since_gc_bytes >= MIN_ALLOCATED_BYTES {
++            return true;
++        }
++
+         false
+     }
+ 
+diff --git a/platform/script/src/heap.rs b/platform/script/src/heap.rs
+index 58c21a392..c52b1d5b9 100644
+--- a/platform/script/src/heap.rs
++++ b/platform/script/src/heap.rs
+@@ -26,6 +26,25 @@ pub struct ScriptAllocationReport {
+     pub exceeded: bool,
+ }
+ 
++/// Point-in-time memory accounting for a script heap, exposed so a host can
++/// record retained occupancy, reuse capacity, and collection frequency.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct ScriptHeapMemoryStats {
++    /// Retained-capacity estimate at the last reconcile plus every byte
++    /// charged since. Cheap to read; call [`ScriptHeap::reconcile_heap_bytes`]
++    /// or collect first for an accurate figure.
++    pub retained_bytes: usize,
++    /// Logical bytes charged since the last collection: the recent-allocation
++    /// signal feeding the collection heuristic.
++    pub allocated_since_gc_bytes: usize,
++    /// Number of completed mark/sweep collections.
++    pub collections: usize,
++    /// Number of cleared `String` buffers parked for reuse.
++    pub reuse_buffers: usize,
++    /// Total capacity in bytes parked for reuse.
++    pub reuse_bytes: usize,
++}
++
+ #[derive(Clone, Debug)]
+ pub(crate) struct ScriptAllocationBudget {
+     remaining: usize,
+@@ -126,6 +145,11 @@ pub struct ScriptHeap {
+     /// adds the bytes charged to `heap_cap` since then.
+     pub(crate) heap_baseline_bytes: usize,
+     pub(crate) heap_limit_exceeded: bool,
++    /// Logical bytes charged since the last collection. A cheap
++    /// recent-allocation signal for the collection heuristic.
++    pub(crate) allocated_since_gc_bytes: usize,
++    /// Completed mark/sweep collections, for host-visible statistics.
++    pub(crate) gc_count: usize,
+     /// Per-string construction ceiling (logical bytes of one script string).
+     pub(crate) max_string_bytes: Option<usize>,
+     pub(crate) string_limit_exceeded: bool,
+@@ -192,6 +216,11 @@ pub(crate) fn charge_allocation(&mut self, bytes: usize, operation: &'static str
+                 return false;
+             }
+         }
++        // `usize::MAX` is the refusal sentinel several call sites pass when
++        // they cannot preflight an exact size; it is not real payload.
++        if bytes != usize::MAX {
++            self.allocated_since_gc_bytes = self.allocated_since_gc_bytes.saturating_add(bytes);
++        }
+         true
+     }
+ 
+@@ -276,18 +305,44 @@ pub fn accounted_heap_bytes(&self) -> usize {
+         self.heap_baseline_bytes.saturating_add(charged)
+     }
+ 
++    /// Measures every live script value and table, returning an exact
++    /// retained-bytes estimate. Unlike [`Self::accounted_heap_bytes`] this
++    /// scans the heap, so call it at host boundaries, not per instruction.
++    pub fn retained_heap_bytes(&self) -> usize {
++        self.estimated_heap_bytes()
++    }
++
++    /// Point-in-time memory accounting for a host monitoring a sandboxed VM.
++    pub fn memory_stats(&self) -> ScriptHeapMemoryStats {
++        ScriptHeapMemoryStats {
++            retained_bytes: self.accounted_heap_bytes(),
++            allocated_since_gc_bytes: self.allocated_since_gc_bytes,
++            collections: self.gc_count,
++            reuse_buffers: self.strings_reuse.len(),
++            reuse_bytes: self.strings_reuse.iter().map(String::capacity).sum(),
++        }
++    }
++
+     /// Recomputes the retained-capacity estimate from the current heap state
+     /// and re-arms the cap's headroom from it. Appropriate after trusted raw
+     /// VM configuration, host-side value injection, or garbage collection.
+     /// Normal script allocation paths update the cached amount in constant
+     /// time instead of scanning the heap on every instruction.
+     pub fn reconcile_heap_bytes(&mut self) {
+-        self.heap_baseline_bytes = self.estimated_heap_bytes();
++        let retained = self.estimated_heap_bytes();
++        self.apply_reconciled_heap_bytes(retained);
++    }
++
++    /// Re-arms the retained-heap cap from an already-measured retained-bytes
++    /// estimate, so a caller that just scanned the heap (the sweep) does not
++    /// scan it a second time.
++    pub(crate) fn apply_reconciled_heap_bytes(&mut self, retained: usize) {
++        self.heap_baseline_bytes = retained;
+         let Some(maximum) = self.max_heap_bytes else {
+             return;
+         };
+-        let mut cap = ScriptAllocationBudget::new(maximum.saturating_sub(self.heap_baseline_bytes));
+-        if self.heap_baseline_bytes > maximum {
++        let mut cap = ScriptAllocationBudget::new(maximum.saturating_sub(retained));
++        if retained > maximum {
+             self.heap_limit_exceeded = true;
+             cap.exceeded = true;
+         }
+@@ -315,7 +370,7 @@ pub fn take_heap_limit_exceeded(&mut self) -> bool {
+         exceeded
+     }
+ 
+-    fn estimated_heap_bytes(&self) -> usize {
++    pub(crate) fn estimated_heap_bytes(&self) -> usize {
+         fn bytes_for<T>(capacity: usize) -> usize {
+             capacity.saturating_mul(size_of::<T>())
+         }
+@@ -421,20 +476,86 @@ pub fn heap_key(&self) -> usize {
+     /// Cap on the number of cleared `String` buffers kept around for reuse. Each one holds a
+     /// heap allocation; a big script burst can stash thousands of them in `strings_reuse`,
+     /// which would otherwise never be released.
+-    const MAX_STRINGS_REUSE: usize = 1024;
++    pub const MAX_STRINGS_REUSE: usize = 1024;
++
++    /// Cap on the total capacity held by the `strings_reuse` pool. The count
++    /// bound above does not bound memory on its own: a burst can hand each
++    /// pooled buffer a large capacity.
++    pub const MAX_STRING_REUSE_BYTES: usize = 4 * 1024 * 1024;
++
++    /// Largest single `String` buffer worth parking for reuse. A buffer larger
++    /// than this is dropped so one oversized string cannot pin its capacity.
++    pub const MAX_STRING_REUSE_BUFFER_BYTES: usize = 64 * 1024;
++
++    /// Below this pool length, the count and per-buffer caps already bound the
++    /// total to `MAX_STRING_REUSE_BYTES` (this value times the per-buffer cap),
++    /// so the byte total can be skipped without scanning the pool.
++    const MIN_STRING_REUSE_BYTE_CHECK: usize = 64;
++
++    /// Takes a parked buffer.
++    pub(crate) fn take_reuse_string(&mut self) -> Option<String> {
++        self.strings_reuse.pop()
++    }
++
++    /// Parks a cleared `String` buffer for reuse when it fits every pool
++    /// bound: per-buffer ceiling, buffer count, and total capacity. Anything
++    /// outside those bounds is returned to the allocator instead of retained.
++    pub(crate) fn recycle_string(&mut self, mut out: String) {
++        out.clear();
++        Self::park_reuse_string(&mut self.strings_reuse, out);
++    }
++
++    /// Shared pool admission rule, also reachable from the sweep.
++    pub(crate) fn park_reuse_string(reuse: &mut Vec<String>, out: String) {
++        let capacity = out.capacity();
++        if capacity == 0
++            || capacity > Self::MAX_STRING_REUSE_BUFFER_BYTES
++            || reuse.len() >= Self::MAX_STRINGS_REUSE
++        {
++            return;
++        }
++        if reuse.len() >= Self::MIN_STRING_REUSE_BYTE_CHECK {
++            let current: usize = reuse.iter().map(String::capacity).sum();
++            if current.saturating_add(capacity) > Self::MAX_STRING_REUSE_BYTES {
++                return;
++            }
++        }
++        reuse.push(out);
++    }
+ 
+     /// Release memory the heap is holding purely for reuse / over-allocation, called after a
+     /// GC sweep. This is safe because it never removes or moves any live slot — it only:
+-    ///   - drops excess pooled-for-reuse `String` buffers beyond a cap (re-allocated lazily),
++    ///   - drops pooled-for-reuse `String` buffers beyond the count / byte caps,
+     ///   - returns over-allocated spare capacity in the slot arrays and free lists.
+     /// The slot arrays keep their high-water `len` (slots are reused via the free lists), so
+     /// every existing index / reference stays valid.
+     pub fn shrink_to_fit(&mut self) {
+-        if self.strings_reuse.len() > Self::MAX_STRINGS_REUSE {
+-            self.strings_reuse.truncate(Self::MAX_STRINGS_REUSE);
+-        }
++        self.strings_reuse
++            .retain(|string| string.capacity() <= Self::MAX_STRING_REUSE_BUFFER_BYTES);
++        self.strings_reuse.truncate(Self::MAX_STRINGS_REUSE);
++        let mut total = 0usize;
++        self.strings_reuse.retain(|string| {
++            total = total.saturating_add(string.capacity());
++            total <= Self::MAX_STRING_REUSE_BYTES
++        });
+         self.strings_reuse.shrink_to_fit();
+ 
++        // Freed slots keep their backing maps and buffers so a routine sweep
++        // can refill them cheaply. Compaction is the boundary that actually
++        // returns that retained capacity to the allocator.
++        for ptr in &self.objects_free {
++            if self.objects.is_valid(*ptr) {
++                let object = &mut self.objects[*ptr];
++                object.map = Default::default();
++                object.vec = Vec::new();
++            }
++        }
++        for ptr in &self.arrays_free {
++            if self.arrays.is_valid(*ptr) {
++                self.arrays[*ptr].storage = ScriptArrayStorage::ScriptValue(Default::default());
++            }
++        }
++
+         self.objects.shrink_to_fit();
+         self.strings.shrink_to_fit();
+         self.arrays.shrink_to_fit();
+@@ -1603,4 +1724,126 @@ fn byte_array_json_input_parses_within_the_string_limit() {
+         assert_eq!(result.as_number(), Some(12345.0));
+         assert!(!vm.bx.heap.take_string_limit_exceeded());
+     }
++
++    #[test]
++    fn string_reuse_pool_bounds_count_bytes_and_oversized_buffers() {
++        let mut heap = ScriptHeap::empty();
++
++        // A buffer past the per-buffer ceiling is returned to the allocator.
++        let mut oversized = String::with_capacity(ScriptHeap::MAX_STRING_REUSE_BUFFER_BYTES + 1);
++        oversized.push_str("oversized");
++        heap.recycle_string(oversized);
++        assert_eq!(heap.memory_stats().reuse_buffers, 0);
++        assert_eq!(heap.memory_stats().reuse_bytes, 0);
++
++        // A real temporary-string cycle parks its buffer.
++        heap.temp_string_with(|_, out| out.push_str("parked"));
++        let parked = heap.memory_stats();
++        assert_eq!(parked.reuse_buffers, 1);
++        assert!(parked.reuse_bytes >= "parked".len());
++
++        // Filling past the count cap with the largest buffers worth parking
++        // never exceeds the count or total-capacity bound.
++        for _ in 0..(ScriptHeap::MAX_STRINGS_REUSE + 128) {
++            let mut buffer = String::with_capacity(ScriptHeap::MAX_STRING_REUSE_BUFFER_BYTES);
++            buffer.push('x');
++            heap.recycle_string(buffer);
++        }
++        let filled = heap.memory_stats();
++        assert!(filled.reuse_buffers <= ScriptHeap::MAX_STRINGS_REUSE);
++        assert!(filled.reuse_bytes <= ScriptHeap::MAX_STRING_REUSE_BYTES);
++
++        heap.shrink_to_fit();
++        let compacted = heap.memory_stats();
++        assert!(compacted.reuse_buffers <= ScriptHeap::MAX_STRINGS_REUSE);
++        assert!(compacted.reuse_bytes <= ScriptHeap::MAX_STRING_REUSE_BYTES);
++    }
++
++    #[test]
++    fn needs_gc_triggers_on_byte_occupancy_and_recent_allocation() {
++        let mut heap = ScriptHeap::empty();
++        assert!(!heap.needs_gc());
++
++        // Well under every count and byte threshold.
++        heap.new_array_from_vec_u8(vec![0u8; 4096]);
++        assert!(!heap.needs_gc());
++
++        // One large allocation, still far below the object-count minimums,
++        // must schedule a collection at the next safe boundary.
++        heap.new_array_from_vec_u8(vec![0u8; 1 << 20]);
++        assert!(heap.needs_gc());
++
++        // A collection clears the recent-allocation signal and re-arms the
++        // byte baseline.
++        heap.sweep(false);
++        assert!(!heap.needs_gc());
++        assert_eq!(heap.memory_stats().collections, 1);
++        assert_eq!(heap.memory_stats().allocated_since_gc_bytes, 0);
++    }
++
++    #[test]
++    fn memory_stats_track_a_capped_vm() {
++        let mut host = ScriptVmHost::new((), ());
++        let mut vm = ScriptVm {
++            host: &mut host,
++            bx: Box::new(ScriptVmBase::new()),
++        };
++        vm.bx.heap.set_max_heap_bytes(Some(usize::MAX));
++        let before = vm.bx.heap.memory_stats();
++        assert_eq!(before.collections, 0);
++        assert!(before.retained_bytes > 0);
++        assert_eq!(before.reuse_buffers, 0);
++
++        vm.bx
++            .heap
++            .set_max_heap_bytes(Some(before.retained_bytes + 64 * 1024));
++        vm.bx.captured_errors = Some(Vec::new());
++        let array = vm.bx.heap.new_array();
++        vm.set_injected_global(id!(values), array.into());
++
++        let result = eval(
++            &mut vm,
++            "stats-cap.octoscript",
++            "try { values[262144] = 1 } { \"ok\" }",
++        );
++        assert!(result.is_err(), "the cap refusal is uncatchable: {result:?}");
++        assert!(vm.bx.heap.take_heap_limit_exceeded());
++
++        vm.gc_and_compact();
++        let after = vm.bx.heap.memory_stats();
++        assert_eq!(after.collections, before.collections + 1);
++        assert!(after.retained_bytes <= before.retained_bytes + 64 * 1024);
++    }
++
++    #[test]
++    fn long_running_allocations_are_reclaimed_by_collection() {
++        let mut host = ScriptVmHost::new((), ());
++        let mut vm = ScriptVm {
++            host: &mut host,
++            bx: Box::new(ScriptVmBase::new()),
++        };
++        vm.gc_and_compact();
++        let baseline = vm.bx.heap.retained_heap_bytes();
++
++        // Root a large host allocation, then confirm it survives collection.
++        let payload = vm.bx.heap.new_array_from_vec_u8(vec![0u8; 4 << 20]);
++        let root = vm.bx.heap.new_array_ref(payload);
++        vm.gc_and_compact();
++        let rooted = vm.bx.heap.retained_heap_bytes();
++        assert!(
++            rooted >= baseline + (4 << 20),
++            "rooted payload must be retained: baseline={baseline} rooted={rooted}"
++        );
++
++        // Dropping the root makes the whole allocation collectable, and a
++        // collection must actually reclaim it.
++        drop(root);
++        vm.gc_and_compact();
++        let reclaimed = vm.bx.heap.retained_heap_bytes();
++        assert!(
++            rooted.saturating_sub(reclaimed) + 64 * 1024 >= (4 << 20),
++            "unrooted payload must be reclaimed: rooted={rooted} reclaimed={reclaimed}"
++        );
++        assert!(vm.bx.heap.memory_stats().collections >= 2);
++    }
+ }
+diff --git a/platform/script/src/string_heap.rs b/platform/script/src/string_heap.rs
+index 614c92d6e..434b56cab 100644
+--- a/platform/script/src/string_heap.rs
++++ b/platform/script/src/string_heap.rs
+@@ -211,7 +211,7 @@ pub fn temp_bounded_string_with<R, F: FnOnce(&mut Self, &mut ScriptStringBuffer)
+     }
+ 
+     fn new_string_buffer(&mut self) -> ScriptStringBuffer {
+-        let out = self.strings_reuse.pop().unwrap_or_default();
++        let out = self.take_reuse_string().unwrap_or_default();
+         let remaining = self.allocation_remaining();
+         let max_heap_bytes = if remaining == usize::MAX {
+             None
+@@ -221,11 +221,6 @@ fn new_string_buffer(&mut self) -> ScriptStringBuffer {
+         ScriptStringBuffer::new(out, self.max_string_bytes, max_heap_bytes)
+     }
+ 
+-    fn recycle_string(&mut self, mut out: String) {
+-        out.clear();
+-        self.strings_reuse.push(out);
+-    }
+-
+     pub fn string_mut_self_with<R, F: FnOnce(&mut Self, &str) -> R>(
+         &mut self,
+         value: ScriptValue,
+@@ -283,14 +278,9 @@ pub fn new_string_from_str(&mut self, value: &str) -> ScriptValue {
+     }
+ 
+     pub fn temp_string_with<R, F: FnOnce(&mut Self, &mut String) -> R>(&mut self, cb: F) -> R {
+-        let mut out = if let Some(s) = self.strings_reuse.pop() {
+-            s
+-        } else {
+-            String::new()
+-        };
++        let mut out = self.take_reuse_string().unwrap_or_default();
+         let r = cb(self, &mut out);
+-        out.clear();
+-        self.strings_reuse.push(out);
++        self.recycle_string(out);
+         r
+     }
+ 
+@@ -306,11 +296,7 @@ pub fn new_string_with<F: FnOnce(&mut Self, &mut String)>(&mut self, cb: F) -> S
+             );
+             return NIL;
+         }
+-        let mut out = if let Some(s) = self.strings_reuse.pop() {
+-            s
+-        } else {
+-            String::new()
+-        };
++        let mut out = self.take_reuse_string().unwrap_or_default();
+         out.clear();
+         cb(self, &mut out);
+         self.intern_or_store_string(out)
+@@ -327,11 +313,7 @@ pub(crate) fn new_string_with_preflight<F: FnOnce(&mut Self, &mut String)>(
+         if !self.charge_string_payload(max_len, operation) {
+             return NIL;
+         }
+-        let mut out = if let Some(s) = self.strings_reuse.pop() {
+-            s
+-        } else {
+-            String::new()
+-        };
++        let mut out = self.take_reuse_string().unwrap_or_default();
+         out.clear();
+         if out.capacity() < max_len {
+             out.reserve_exact(max_len);
+@@ -353,11 +335,7 @@ pub(crate) fn temp_string_with_preflight<R, F: FnOnce(&mut Self, &mut String) ->
+         if !self.charge_allocation(max_len, operation) {
+             return None;
+         }
+-        let mut out = if let Some(s) = self.strings_reuse.pop() {
+-            s
+-        } else {
+-            String::new()
+-        };
++        let mut out = self.take_reuse_string().unwrap_or_default();
+         out.clear();
+         if out.capacity() < max_len {
+             out.reserve_exact(max_len);
+@@ -365,7 +343,7 @@ pub(crate) fn temp_string_with_preflight<R, F: FnOnce(&mut Self, &mut String) ->
+         let result = cb(self, &mut out);
+         debug_assert!(out.len() <= max_len);
+         out.clear();
+-        self.strings_reuse.push(out);
++        self.recycle_string(out);
+         Some(result)
+     }
+ 
+@@ -384,11 +362,7 @@ pub fn new_string_concat(&mut self, a: ScriptValue, b: ScriptValue) -> ScriptVal
+             return NIL;
+         }
+ 
+-        let mut out = if let Some(s) = self.strings_reuse.pop() {
+-            s
+-        } else {
+-            String::new()
+-        };
++        let mut out = self.take_reuse_string().unwrap_or_default();
+         out.clear();
+         // The budget check bounds `len`, making this reserve safe even for a
+         // hostile sparse/overflow-derived input length.
+@@ -402,22 +376,21 @@ pub fn new_string_concat(&mut self, a: ScriptValue, b: ScriptValue) -> ScriptVal
+ 
+     /// Takes an owned String and either interns it, reuses an existing interned value, or stores it as a new string.
+     /// The String is consumed and may be returned to the reuse pool.
+-    pub fn intern_or_store_string(&mut self, mut out: String) -> ScriptValue {
++    pub fn intern_or_store_string(&mut self, out: String) -> ScriptValue {
+         if self.exceeds_string_limit(out.len()) {
+             self.note_string_limit_exceeded(out.len(), "storing a string");
+             return NIL;
+         }
+         if let Some(v) = ScriptValue::from_inline_string(&out) {
+-            out.clear();
+-            self.strings_reuse.push(out);
++            self.recycle_string(out);
+             return v;
+         }
+ 
+         // check intern table
+         if let Some(index) = self.string_intern.get(&out) {
+-            out.clear();
+-            self.strings_reuse.push(out);
+-            return (*index).into();
++            let index = *index;
++            self.recycle_string(out);
++            return index.into();
+         }
+ 
+         if !self.charge_string_payload(out.len(), "interning a string") {
+@@ -444,20 +417,19 @@ fn charge_string_payload(&mut self, len: usize, operation: &'static str) -> bool
+     /// intern hits are still handled because concat preflights before it has
+     /// materialized the bytes. The per-string ceiling is checked on the exact
+     /// length here because preflights only know an upper bound.
+-    fn intern_or_store_string_charged(&mut self, mut out: String) -> ScriptValue {
++    fn intern_or_store_string_charged(&mut self, out: String) -> ScriptValue {
+         if self.exceeds_string_limit(out.len()) {
+             self.note_string_limit_exceeded(out.len(), "storing a string");
+             return NIL;
+         }
+         if let Some(v) = ScriptValue::from_inline_string(&out) {
+-            out.clear();
+-            self.strings_reuse.push(out);
++            self.recycle_string(out);
+             return v;
+         }
+         if let Some(index) = self.string_intern.get(&out) {
+-            out.clear();
+-            self.strings_reuse.push(out);
+-            return (*index).into();
++            let index = *index;
++            self.recycle_string(out);
++            return index.into();
+         }
+         self.store_unique_string(out).into()
+     }
