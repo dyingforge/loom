@@ -1,0 +1,1792 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index cd9cc8e..c34e374 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -52,6 +52,12 @@ version = "0.7.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
+ 
++[[package]]
++name = "ascii"
++version = "1.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d92bec98840b8f03a5ff5413de5293bfcd8bf96467cf5452609f939ec6f5de16"
++
+ [[package]]
+ name = "ash"
+ version = "0.38.0+1.3.281"
+@@ -141,6 +147,12 @@ dependencies = [
+  "alloc-stdlib",
+ ]
+ 
++[[package]]
++name = "bumpalo"
++version = "3.20.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
++
+ [[package]]
+ name = "bytemuck"
+ version = "1.25.0"
+@@ -191,6 +203,12 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
+ name = "cfg_aliases"
+ version = "0.2.1"
+ 
++[[package]]
++name = "chunked_transfer"
++version = "1.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6e4de3bc4ea267985becf712dc6d9eed8b04c953b3fcfb339ebc87acd9804901"
++
+ [[package]]
+ name = "constant_time_eq"
+ version = "0.4.2"
+@@ -334,6 +352,18 @@ dependencies = [
+  "windows-sys",
+ ]
+ 
++[[package]]
++name = "fallible-iterator"
++version = "0.3.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
++
++[[package]]
++name = "fallible-streaming-iterator"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
++
+ [[package]]
+ name = "fastrand"
+ version = "2.5.0"
+@@ -458,6 +488,24 @@ dependencies = [
+  "foldhash 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ ]
+ 
++[[package]]
++name = "hashbrown"
++version = "0.17.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
++dependencies = [
++ "foldhash 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
++]
++
++[[package]]
++name = "hashlink"
++version = "0.12.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
++dependencies = [
++ "hashbrown 0.17.1",
++]
++
+ [[package]]
+ name = "hex"
+ version = "0.4.3"
+@@ -490,6 +538,12 @@ version = "1.10.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
+ 
++[[package]]
++name = "httpdate"
++version = "1.0.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
++
+ [[package]]
+ name = "hybrid-array"
+ version = "0.4.15"
+@@ -568,6 +622,16 @@ version = "1.0.18"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+ 
++[[package]]
++name = "js-sys"
++version = "0.3.106"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7883d941dae510fb2d978fc3fe018c71c9e2892fd38854de3e8b92c2e5ad9cc5"
++dependencies = [
++ "cfg-if 1.0.5",
++ "wasm-bindgen",
++]
++
+ [[package]]
+ name = "libc"
+ version = "0.2.189"
+@@ -592,6 +656,17 @@ dependencies = [
+  "windows-link 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ ]
+ 
++[[package]]
++name = "libsqlite3-sys"
++version = "0.38.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
++dependencies = [
++ "cc",
++ "pkg-config 0.3.34",
++ "vcpkg",
++]
++
+ [[package]]
+ name = "linux-raw-sys"
+ version = "0.12.1"
+@@ -826,6 +901,8 @@ dependencies = [
+  "makepad-live-id",
+  "makepad-micro-serde",
+  "makepad-script",
++ "rustls",
++ "webpki-roots",
+  "windows",
+ ]
+ 
+@@ -1098,7 +1175,7 @@ dependencies = [
+  "once_cell 1.21.3",
+  "rustc-hash",
+  "spirv",
+- "thiserror",
++ "thiserror 2.0.18",
+  "unicode-ident 1.0.22",
+ ]
+ 
+@@ -1191,6 +1268,7 @@ name = "octoscript-ui-l0"
+ version = "0.1.0"
+ dependencies = [
+  "blake3",
++ "serde",
+  "serde_json",
+ ]
+ 
+@@ -1287,13 +1365,18 @@ dependencies = [
+ name = "octosense-card-host"
+ version = "0.1.0"
+ dependencies = [
++ "hex",
+  "makepad-widgets",
+  "octoscript-makepad",
+  "octoscript-ui-l0",
+  "octoscript-widgets",
+  "octosense-app-policy",
+  "octosense-appstore",
++ "rand_core 0.9.5",
++ "rusqlite",
+  "serde_json",
++ "tiny_http",
++ "ureq",
+ ]
+ 
+ [[package]]
+@@ -1330,6 +1413,12 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+ name = "pkg-config"
+ version = "0.3.32"
+ 
++[[package]]
++name = "pkg-config"
++version = "0.3.34"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
++
+ [[package]]
+ name = "png"
+ version = "0.18.1"
+@@ -1466,6 +1555,31 @@ dependencies = [
+  "lru",
+ ]
+ 
++[[package]]
++name = "rsqlite-vfs"
++version = "0.1.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
++dependencies = [
++ "hashbrown 0.16.1 (registry+https://github.com/rust-lang/crates.io-index)",
++ "thiserror 2.0.21",
++]
++
++[[package]]
++name = "rusqlite"
++version = "0.40.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
++dependencies = [
++ "bitflags 2.13.2",
++ "fallible-iterator",
++ "fallible-streaming-iterator",
++ "hashlink",
++ "libsqlite3-sys",
++ "smallvec 1.16.1",
++ "sqlite-wasm-rs",
++]
++
+ [[package]]
+ name = "rustc-hash"
+ version = "1.1.0"
+@@ -1527,6 +1641,12 @@ dependencies = [
+  "untrusted",
+ ]
+ 
++[[package]]
++name = "rustversion"
++version = "1.0.23"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
++
+ [[package]]
+ name = "rustybuzz"
+ version = "0.18.0"
+@@ -1652,6 +1772,18 @@ dependencies = [
+  "bitflags 2.10.0",
+ ]
+ 
++[[package]]
++name = "sqlite-wasm-rs"
++version = "0.5.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "dc3efc0da82635d7e1ced0053bbbfa8c7ab9645d0bf36ceb4f7127bb85315d75"
++dependencies = [
++ "cc",
++ "js-sys",
++ "rsqlite-vfs",
++ "wasm-bindgen",
++]
++
+ [[package]]
+ name = "subtle"
+ version = "2.6.1"
+@@ -1697,7 +1829,16 @@ dependencies = [
+ name = "thiserror"
+ version = "2.0.18"
+ dependencies = [
+- "thiserror-impl",
++ "thiserror-impl 2.0.18",
++]
++
++[[package]]
++name = "thiserror"
++version = "2.0.21"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
++dependencies = [
++ "thiserror-impl 2.0.21",
+ ]
+ 
+ [[package]]
+@@ -1707,6 +1848,29 @@ dependencies = [
+  "makepad-micro-proc-macro",
+ ]
+ 
++[[package]]
++name = "thiserror-impl"
++version = "2.0.21"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.6",
++]
++
++[[package]]
++name = "tiny_http"
++version = "0.12.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "389915df6413a2e74fb181895f933386023c71110878cd0825588928e64cdc82"
++dependencies = [
++ "ascii",
++ "chunked_transfer",
++ "httpdate",
++ "log",
++]
++
+ [[package]]
+ name = "ttf-parser"
+ version = "0.24.1"
+@@ -1806,6 +1970,12 @@ version = "0.8.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "b8c0a043c9540bae7c578c88f91dda8bd82e59ae27c21baca69c8b191aaf5a6e"
+ 
++[[package]]
++name = "vcpkg"
++version = "0.2.15"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
++
+ [[package]]
+ name = "wasi"
+ version = "0.11.1+wasi-snapshot-preview1"
+@@ -1821,6 +1991,51 @@ dependencies = [
+  "wit-bindgen",
+ ]
+ 
++[[package]]
++name = "wasm-bindgen"
++version = "0.2.129"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9bb54f33acc68fd454578d9820b0bde1a1a3d17aa17bb7b6595806d02886d409"
++dependencies = [
++ "cfg-if 1.0.5",
++ "once_cell 1.21.4",
++ "rustversion",
++ "wasm-bindgen-macro",
++ "wasm-bindgen-shared",
++]
++
++[[package]]
++name = "wasm-bindgen-macro"
++version = "0.2.129"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2e29d0c35b16e224a7eeb5cd2d25e3e1968fbd65604117b44d3b789d00ee8535"
++dependencies = [
++ "quote",
++ "wasm-bindgen-macro-support",
++]
++
++[[package]]
++name = "wasm-bindgen-macro-support"
++version = "0.2.129"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6f501a8bc3719dba86ef8ae4728879c08001bea749eb1333ac5b91e040e2a6b7"
++dependencies = [
++ "bumpalo",
++ "proc-macro2",
++ "quote",
++ "syn 3.0.6",
++ "wasm-bindgen-shared",
++]
++
++[[package]]
++name = "wasm-bindgen-shared"
++version = "0.2.129"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "23f0c9c52aa7cd7d77769a4cfe2a9adb1b331f489a41d912ce14513d5ab995c6"
++dependencies = [
++ "unicode-ident 1.0.26",
++]
++
+ [[package]]
+ name = "wayland-backend"
+ version = "0.3.12"
+@@ -1862,7 +2077,7 @@ name = "wayland-sys"
+ version = "0.31.8"
+ dependencies = [
+  "makepad-error-log",
+- "pkg-config",
++ "pkg-config 0.3.32",
+ ]
+ 
+ [[package]]
+diff --git a/crates/card-host/Cargo.toml b/crates/card-host/Cargo.toml
+index e546562..e7de697 100644
+--- a/crates/card-host/Cargo.toml
++++ b/crates/card-host/Cargo.toml
+@@ -27,6 +27,19 @@ octoscript-ui-l0 = { git = "https://github.com/OctoSense-org/Octoscript.git", re
+ octoscript-widgets = { git = "https://github.com/OctoSense-org/Octoscript-Makepad.git", rev = "2cc5ef37d7d6a3d2992673389ce74488f7bb2d87" }
+ serde_json = "1"
+ octosense-appstore = { path = "../appstore" }
++# The app's own business state (ADR 0002 phase 1): a loopback HTTP service a
++# contained app reaches like its artwork, backed by a SQLite file in the
++# app's jail. rusqlite and tiny_http are mature libraries, so no hand-written
++# HTTP or JSON parser appears in this host.
++rusqlite = { version = "0.40.1", features = ["bundled"] }
++tiny_http = "0.12"
++rand_core = { version = "0.9", features = ["os_rng"] }
++hex = "0.4"
++
++[dev-dependencies]
++# The state-service tests exercise the real loopback HTTP surface, so they
++# need a real client on the other end.
++ureq = "3"
+ 
+ [[bin]]
+ name = "card-host"
+diff --git a/crates/card-host/src/host.rs b/crates/card-host/src/host.rs
+index d630877..c390446 100644
+--- a/crates/card-host/src/host.rs
++++ b/crates/card-host/src/host.rs
+@@ -39,6 +39,9 @@ pub struct App {
+     mounted: bool,
+     #[rust]
+     assets: Option<octosense_app_policy::AssetServer>,
++    /// The app's SQLite business state, when it was granted `storage`.
++    #[rust]
++    state: Option<crate::state::StateService>,
+     #[rust]
+     app_id: String,
+     #[rust]
+@@ -275,6 +278,24 @@ impl App {
+         settings.hosts.push(server.allowlist_entry());
+         let origin = server.origin().to_string();
+         self.assets = Some(server);
++        // An app granted `storage` also gets its business state, served on a
++        // second loopback port of ours and named by a random path credential
++        // the script receives as `{{state}}`. Without the grant there is no
++        // service and no allowlist entry, so a `{{state}}` reference resolves
++        // to nothing.
++        if settings.storage_root().is_some() {
++            match crate::state::StateService::start(&settings.jail_root, settings.granted_storage_quota())
++            {
++                Ok(service) => {
++                    settings.hosts.push(service.allowlist_entry());
++                    self.state = Some(service);
++                }
++                Err(e) => {
++                    error!("card-host: cannot open the app's state store: {e}");
++                    return;
++                }
++            }
++        }
+         let splash = self.ui.splash(cx, ids!(card));
+         let applied = octosense_app_policy::splash_adapter::apply(&splash, cx, &settings);
+         log!(
+@@ -299,7 +320,15 @@ impl App {
+         }
+ 
+         match card_source(&args.bundle, &origin) {
+-            Ok(source) => splash.set_text(cx, &source),
++            Ok(source) => {
++                // The script names the state service by placeholder; only the
++                // host knows its random credential, and it is not logged.
++                let source = match self.state.as_ref() {
++                    Some(service) => source.replace("{{state}}", service.origin()),
++                    None => source,
++                };
++                splash.set_text(cx, &source);
++            }
+             Err(e) => error!("card-host: the card did not lower: {e}"),
+         }
+     }
+diff --git a/crates/card-host/src/main.rs b/crates/card-host/src/main.rs
+index 6b45917..ec50443 100644
+--- a/crates/card-host/src/main.rs
++++ b/crates/card-host/src/main.rs
+@@ -24,6 +24,7 @@ mod args;
+ // `app_main!` also emits a `main` of its own in there; this one is the entry.
+ #[allow(dead_code)]
+ mod host;
++mod state;
+ 
+ fn main() {
+     match args::parse(std::env::args().skip(1)) {
+diff --git a/crates/card-host/src/state.rs b/crates/card-host/src/state.rs
+new file mode 100644
+index 0000000..d715cbc
+--- /dev/null
++++ b/crates/card-host/src/state.rs
+@@ -0,0 +1,1315 @@
++//! The app's own business state, kept in SQLite behind a host-owned loopback
++//! service.
++//!
++//! A contained app cannot open a database, and its isolate's script runs under
++//! a jail and a storage quota. The host therefore serves the app's state the
++//! same way it serves the app's artwork: a loopback HTTP endpoint bound to a
++//! kernel-picked port, reachable only through the isolate's host allowlist, and
++//! named by a per-process random path credential that the host injects into the
++//! script as `{{state}}`. The credential is never logged.
++//!
++//! One worker thread owns one `rusqlite` connection and handles one request at a
++//! time, so every write is a transaction in arrival order and nothing races.
++//! The protocol is fixed:
++//!
++//! * `GET  <state>/v1/state?projectId=…` → `{version, business, draft}`
++//! * `POST <state>/v1/draft`             `{projectId, questionId, revision, goal, deadline, answer}`
++//! * `POST <state>/v1/commit`            `{projectId, expectedVersion, business}`
++//!
++//! A draft is stored per project and question; only a larger `revision` may
++//! overwrite it. The business record names the current clarification question in
++//! its top-level `questionId` string; `GET` returns that question's draft and
++//! nothing else, so a new question whose revisions start low never returns the
++//! previous question's answer. Without a business record, or without a
++//! `questionId`, there is no current question and `draft` is `null`.
++//!
++//! A commit checks `expectedVersion` inside one transaction, rejects a stored
++//! record that is not valid JSON would be silently overwritten, increments the
++//! version, writes the whole business record, reads it back, and only then
++//! answers `{version, business}`.
++//!
++//! Storage is bounded by the app's whole `storage` grant. After the rows are
++//! written, but before the transaction commits, the service measures the jail
++//! as it will be: every file except the database itself (the old JSON records,
++//! anything the app wrote, the rollback journal) plus the database's actual
++//! page count (`PRAGMA page_count * PRAGMA page_size`). That reflects page,
++//! index and journal growth and never adds payload bytes the database already
++//! contains. A total above the quota rolls the transaction back. The request
++//! body itself is bounded by the same grant before it is buffered.
++//!
++//! On the first read the service migrates the app's old
++//! `calendar-a.json`/`calendar-b.json` records in one transaction. Every
++//! present file must parse, carry `payload == mirror`, `schema == 3` and a
++//! matching non-negative `sequence`; the two must not share a sequence with
++//! different content, and the record's `project.id` must equal the requested
++//! project. A failure stops the migration with no row written and the database
++//! left as it was. The migrated record drops the full `agent` model session and
++//! keeps the business fields and the resume material.
++
++use rusqlite::{params, Connection, OptionalExtension};
++use serde_json::{json, Value};
++use std::collections::HashMap;
++use std::path::{Path, PathBuf};
++use std::sync::atomic::{AtomicBool, Ordering};
++use std::sync::Arc;
++use std::time::Duration;
++use tiny_http::{Header, Method, Response, Server};
++
++/// The SQLite file, inside the app's jail.
++pub const STATE_DB_FILE: &str = "state.sqlite3";
++/// The record format this host migrates and the version its own schema
++/// expects. Matches `bundle/main.splash` and `docs/PROTOCOL.md`.
++pub const LEGACY_SCHEMA_VERSION: i64 = 3;
++const LEGACY_FILES: [&str; 2] = ["calendar-a.json", "calendar-b.json"];
++/// Byte length of the random URL credential.
++const CREDENTIAL_BYTES: usize = 32;
++/// The largest request body buffered, regardless of how large the storage
++/// quota is. The quota still applies on top.
++const MAX_REQUEST_BYTES: u64 = 64 * 1024 * 1024;
++/// The business field naming the current clarification question.
++const CURRENT_QUESTION_FIELD: &str = "questionId";
++
++/// A running state service. Dropping it stops the worker and frees the port.
++pub struct StateService {
++    origin: String,
++    port: u16,
++    stop: Arc<AtomicBool>,
++}
++
++impl StateService {
++    /// Start the service for a jail. The caller only calls this for an app
++    /// that was granted `storage`. `quota_bytes` is the whole jail's ceiling;
++    /// zero means no write is accepted.
++    pub fn start(jail_root: &Path, quota_bytes: u64) -> Result<StateService, String> {
++        std::fs::create_dir_all(jail_root)
++            .map_err(|e| format!("state service: cannot make {}: {e}", jail_root.display()))?;
++        let store = Store::open(jail_root, quota_bytes)?;
++        let secret = random_credential()?;
++        let server = Server::http("127.0.0.1:0").map_err(|e| format!("state service: {e}"))?;
++        let port = server
++            .server_addr()
++            .to_ip()
++            .map(|addr| addr.port())
++            .ok_or_else(|| "state service: bound to no loopback address".to_string())?;
++        let stop = Arc::new(AtomicBool::new(false));
++        let flag = stop.clone();
++        let prefix = format!("/{secret}");
++        std::thread::Builder::new()
++            .name("app-state".into())
++            .spawn(move || run(server, store, prefix, flag))
++            .map_err(|e| format!("state service: cannot start its worker: {e}"))?;
++        Ok(StateService {
++            origin: format!("http://127.0.0.1:{port}/{secret}"),
++            port,
++            stop,
++        })
++    }
++
++    /// The base URL a lowered app uses, with no trailing slash.
++    pub fn origin(&self) -> &str {
++        &self.origin
++    }
++
++    /// Exactly this service and no other loopback endpoint.
++    pub fn allowlist_entry(&self) -> String {
++        format!("127.0.0.1:{}", self.port)
++    }
++}
++
++impl Drop for StateService {
++    fn drop(&mut self) {
++        self.stop.store(true, Ordering::Relaxed);
++    }
++}
++
++fn random_credential() -> Result<String, String> {
++    use rand_core::TryRngCore;
++    let mut bytes = [0u8; CREDENTIAL_BYTES];
++    rand_core::OsRng
++        .try_fill_bytes(&mut bytes)
++        .map_err(|e| format!("state service: the OS has no randomness: {e}"))?;
++    Ok(hex::encode(bytes))
++}
++
++fn run(server: Server, mut store: Store, prefix: String, stop: Arc<AtomicBool>) {
++    while !stop.load(Ordering::Relaxed) {
++        match server.recv_timeout(Duration::from_millis(100)) {
++            Ok(Some(request)) => {
++                let _ = answer(&mut store, &prefix, request);
++            }
++            Ok(None) => {}
++            Err(_) => break,
++        }
++    }
++}
++
++fn answer(
++    store: &mut Store,
++    prefix: &str,
++    mut request: tiny_http::Request,
++) -> std::io::Result<()> {
++    let method = request.method().clone();
++    let url = request.url().to_string();
++    // Bound the body before buffering it: a hostile client must not be able to
++    // make the host allocate without limit. `.take` reads at most one byte past
++    // the bound so an over-long body is recognised without being stored.
++    let limit = store.request_limit();
++    let mut bytes = Vec::new();
++    let mut limited = std::io::Read::take(request.as_reader(), limit.saturating_add(1));
++    std::io::Read::read_to_end(&mut limited, &mut bytes)?;
++    let reply = if bytes.len() as u64 > limit {
++        Reply::error(413, "the request body exceeds the app's storage quota")
++    } else {
++        match String::from_utf8(bytes) {
++            Ok(body) => route(store, prefix, &method, &url, &body),
++            Err(_) => Reply::error(400, "the request body is not UTF-8"),
++        }
++    };
++    let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
++        .expect("a static header is valid");
++    request.respond(
++        Response::from_string(reply.body.to_string())
++            .with_status_code(reply.status)
++            .with_header(header),
++    )
++}
++
++struct Reply {
++    status: u16,
++    body: Value,
++}
++
++impl Reply {
++    fn ok(body: Value) -> Reply {
++        Reply { status: 200, body }
++    }
++
++    fn error(status: u16, message: impl Into<String>) -> Reply {
++        Reply { status, body: json!({"error": message.into()}) }
++    }
++}
++
++fn route(store: &mut Store, prefix: &str, method: &Method, url: &str, body: &str) -> Reply {
++    let (path, query) = match url.split_once('?') {
++        Some((path, query)) => (path, query),
++        None => (url, ""),
++    };
++    let Some(rest) = path.strip_prefix(prefix) else {
++        return Reply::error(404, "not found");
++    };
++    match (method, rest) {
++        (Method::Get, "/v1/state") => get_state(store, query),
++        (Method::Post, "/v1/draft") => post_draft(store, body),
++        (Method::Post, "/v1/commit") => post_commit(store, body),
++        _ => Reply::error(404, "not found"),
++    }
++}
++
++fn query_param(query: &str, name: &str) -> Option<String> {
++    query.split('&').find_map(|pair| {
++        let (key, value) = pair.split_once('=')?;
++        (key == name).then(|| value.to_string())
++    })
++}
++
++fn get_state(store: &mut Store, query: &str) -> Reply {
++    let Some(project_id) = query_param(query, "projectId").filter(|id| !id.is_empty()) else {
++        return Reply::error(400, "projectId is required");
++    };
++    match store.state(&project_id) {
++        Ok(body) => Reply::ok(body),
++        Err(error) => store_error(error),
++    }
++}
++
++fn post_draft(store: &mut Store, body: &str) -> Reply {
++    let Some(value) = parse_body(body) else {
++        return Reply::error(400, "the request body is not a JSON object");
++    };
++    let project_id = match required_string(&value, "projectId") {
++        Ok(value) => value,
++        Err(reply) => return reply,
++    };
++    let question_id = match required_string(&value, "questionId") {
++        Ok(value) => value,
++        Err(reply) => return reply,
++    };
++    let goal = match required_string(&value, "goal") {
++        Ok(value) => value,
++        Err(reply) => return reply,
++    };
++    let deadline = match required_string(&value, "deadline") {
++        Ok(value) => value,
++        Err(reply) => return reply,
++    };
++    let answer = match required_string(&value, "answer") {
++        Ok(value) => value,
++        Err(reply) => return reply,
++    };
++    let Some(revision) = value.get("revision").and_then(Value::as_i64).filter(|r| *r >= 0) else {
++        return Reply::error(400, "revision must be a non-negative integer");
++    };
++    match store.put_draft(&project_id, &question_id, revision, &goal, &deadline, &answer) {
++        Ok(body) => Reply::ok(body),
++        Err(error) => store_error(error),
++    }
++}
++
++fn post_commit(store: &mut Store, body: &str) -> Reply {
++    let Some(value) = parse_body(body) else {
++        return Reply::error(400, "the request body is not a JSON object");
++    };
++    let project_id = match required_string(&value, "projectId") {
++        Ok(value) => value,
++        Err(reply) => return reply,
++    };
++    let Some(expected_version) = value.get("expectedVersion").and_then(Value::as_i64).filter(|v| *v >= 0)
++    else {
++        return Reply::error(400, "expectedVersion must be a non-negative integer");
++    };
++    let Some(business) = value.get("business") else {
++        return Reply::error(400, "business is required");
++    };
++    match store.commit(&project_id, expected_version, business.clone()) {
++        Ok(body) => Reply::ok(body),
++        Err(error) => store_error(error),
++    }
++}
++
++fn parse_body(body: &str) -> Option<Value> {
++    let value: Value = serde_json::from_str(body).ok()?;
++    value.is_object().then_some(value)
++}
++
++/// A field the request must carry as a string. A missing or wrongly typed
++/// field is a client error, never a silently stored empty draft field.
++fn required_string(value: &Value, name: &str) -> Result<String, Reply> {
++    match value.get(name) {
++        Some(Value::String(text)) => Ok(text.clone()),
++        Some(_) => Err(Reply::error(400, format!("{name} must be a string"))),
++        None => Err(Reply::error(400, format!("{name} is required"))),
++    }
++}
++
++fn store_error(error: StoreError) -> Reply {
++    match error {
++        StoreError::Conflict { version } => Reply {
++            status: 409,
++            body: json!({"error": "version_conflict", "version": version}),
++        },
++        StoreError::Quota(message) => Reply::error(507, message),
++        StoreError::Migration(message) => Reply::error(500, message),
++        StoreError::Internal(message) => Reply::error(500, message),
++    }
++}
++
++/// A failure the service turns into an HTTP status.
++#[derive(Debug)]
++enum StoreError {
++    Conflict { version: i64 },
++    Quota(String),
++    Migration(String),
++    Internal(String),
++}
++
++impl From<rusqlite::Error> for StoreError {
++    fn from(error: rusqlite::Error) -> Self {
++        StoreError::Internal(format!("state database: {error}"))
++    }
++}
++
++/// The worker's SQLite handle, its quota and where its legacy records live.
++struct Store {
++    conn: Connection,
++    jail_root: PathBuf,
++    quota: u64,
++    migrated: bool,
++}
++
++impl Store {
++    fn open(jail_root: &Path, quota: u64) -> Result<Store, String> {
++        let db_path = jail_root.join(STATE_DB_FILE);
++        let conn = Connection::open(&db_path)
++            .map_err(|e| format!("state service: cannot open {}: {e}", db_path.display()))?;
++        // Fail fast rather than stall a UI thread when another writer holds
++        // the file; the commit answers an error and leaves the record alone.
++        conn.busy_timeout(Duration::from_millis(0))
++            .map_err(|e| format!("state service: busy timeout: {e}"))?;
++        conn.execute_batch(
++            "CREATE TABLE IF NOT EXISTS business (
++                 project_id TEXT PRIMARY KEY,
++                 version    INTEGER NOT NULL,
++                 business   TEXT
++             );
++             CREATE TABLE IF NOT EXISTS draft (
++                 project_id  TEXT NOT NULL,
++                 question_id TEXT NOT NULL,
++                 revision    INTEGER NOT NULL,
++                 goal        TEXT NOT NULL DEFAULT '',
++                 deadline    TEXT NOT NULL DEFAULT '',
++                 answer      TEXT NOT NULL DEFAULT '',
++                 PRIMARY KEY (project_id, question_id)
++             );
++             CREATE TABLE IF NOT EXISTS meta (
++                 key   TEXT PRIMARY KEY,
++                 value TEXT NOT NULL
++             );",
++        )
++        .map_err(|e| format!("state service: cannot create its tables: {e}"))?;
++        Ok(Store {
++            conn,
++            jail_root: jail_root.to_path_buf(),
++            quota,
++            migrated: false,
++        })
++    }
++
++    /// The largest request body the service buffers, tied to the grant.
++    fn request_limit(&self) -> u64 {
++        self.quota.min(MAX_REQUEST_BYTES)
++    }
++
++    /// Reject the current transaction when the jail as it stands would pass
++    /// the quota. Called after the rows are written and before commit, so the
++    /// database's live page count is part of the measurement.
++    fn check_quota(jail_root: &Path, quota: u64, tx: &Connection) -> Result<(), StoreError> {
++        let total = jail_bytes_except_db(jail_root)?.saturating_add(db_page_bytes(tx)?);
++        if quota != 0 && total <= quota {
++            return Ok(());
++        }
++        Err(StoreError::Quota(format!(
++            "the app's storage quota is exceeded: {total} bytes occupied, {quota} allowed"
++        )))
++    }
++
++    fn meta_flag(&self, key: &str) -> rusqlite::Result<bool> {
++        self.conn
++            .query_row("SELECT value FROM meta WHERE key = ?1", params![key], |row| {
++                row.get::<_, String>(0)
++            })
++            .optional()
++            .map(|value| value.is_some())
++    }
++
++    /// Migrate the app's old JSON records once, into `project_id`.
++    fn ensure_migrated(&mut self, project_id: &str) -> Result<(), StoreError> {
++        if self.migrated {
++            return Ok(());
++        }
++        if self.meta_flag("migrated")? {
++            self.migrated = true;
++            return Ok(());
++        }
++        // Read and validate before touching the database, so a corrupt file
++        // never even opens a write transaction.
++        let business = read_legacy(&self.jail_root).map_err(StoreError::Migration)?;
++        let tx = self.conn.transaction()?;
++        if let Some(business) = business {
++            let record_project = business
++                .get("project")
++                .and_then(|project| project.get("id"))
++                .and_then(Value::as_str)
++                .ok_or_else(|| {
++                    StoreError::Migration(
++                        "the legacy record has no project id to check its migration against".into(),
++                    )
++                })?;
++            if record_project != project_id {
++                return Err(StoreError::Migration(format!(
++                    "the legacy record belongs to project {record_project:?}, not {project_id:?}"
++                )));
++            }
++            let text = business.to_string();
++            tx.execute(
++                "INSERT INTO business(project_id, version, business) VALUES(?1, 0, ?2)
++                 ON CONFLICT(project_id) DO UPDATE SET version = excluded.version, business = excluded.business",
++                params![project_id, text],
++            )?;
++        }
++        tx.execute(
++            "INSERT INTO meta(key, value) VALUES('migrated', '1')
++             ON CONFLICT(key) DO UPDATE SET value = '1'",
++            [],
++        )?;
++        Self::check_quota(&self.jail_root, self.quota, &tx)?;
++        tx.commit()?;
++        self.migrated = true;
++        Ok(())
++    }
++
++    fn state(&mut self, project_id: &str) -> Result<Value, StoreError> {
++        self.ensure_migrated(project_id)?;
++        let row: Option<(i64, Option<String>)> = self
++            .conn
++            .query_row(
++                "SELECT version, business FROM business WHERE project_id = ?1",
++                params![project_id],
++                |row| Ok((row.get(0)?, row.get(1)?)),
++            )
++            .optional()?;
++        let (version, business_text) = row.unwrap_or((0, None));
++        let business = match &business_text {
++            None => Value::Null,
++            Some(text) => serde_json::from_str(text).map_err(|e| {
++                StoreError::Internal(format!(
++                    "state database: the stored business record is not valid JSON: {e}"
++                ))
++            })?,
++        };
++        // Only the current question's draft is returned. A stored but
++        // non-string `questionId` is corruption, not "no question".
++        let draft = match business.get(CURRENT_QUESTION_FIELD) {
++            None => Value::Null,
++            Some(Value::String(question_id)) => self.draft(project_id, question_id)?,
++            Some(_) => {
++                return Err(StoreError::Internal(format!(
++                    "state database: {CURRENT_QUESTION_FIELD} is not a string"
++                )))
++            }
++        };
++        Ok(json!({
++            "version": version,
++            "business": business,
++            "draft": draft,
++        }))
++    }
++
++    fn draft(&self, project_id: &str, question_id: &str) -> Result<Value, StoreError> {
++        let draft: Option<Value> = self
++            .conn
++            .query_row(
++                "SELECT revision, goal, deadline, answer FROM draft
++                 WHERE project_id = ?1 AND question_id = ?2",
++                params![project_id, question_id],
++                |row| {
++                    Ok(json!({
++                        "questionId": question_id,
++                        "revision": row.get::<_, i64>(0)?,
++                        "goal": row.get::<_, String>(1)?,
++                        "deadline": row.get::<_, String>(2)?,
++                        "answer": row.get::<_, String>(3)?,
++                    }))
++                },
++            )
++            .optional()?;
++        Ok(draft.unwrap_or(Value::Null))
++    }
++
++    fn put_draft(
++        &mut self,
++        project_id: &str,
++        question_id: &str,
++        revision: i64,
++        goal: &str,
++        deadline: &str,
++        answer: &str,
++    ) -> Result<Value, StoreError> {
++        self.ensure_migrated(project_id)?;
++        let tx = self.conn.transaction()?;
++        let existing: Option<i64> = tx
++            .query_row(
++                "SELECT revision FROM draft WHERE project_id = ?1 AND question_id = ?2",
++                params![project_id, question_id],
++                |row| row.get(0),
++            )
++            .optional()?;
++        let applied = existing.is_none_or(|current| revision > current);
++        if applied {
++            tx.execute(
++                "INSERT INTO draft(project_id, question_id, revision, goal, deadline, answer)
++                 VALUES(?1, ?2, ?3, ?4, ?5, ?6)
++                 ON CONFLICT(project_id, question_id) DO UPDATE SET
++                     revision = excluded.revision,
++                     goal = excluded.goal,
++                     deadline = excluded.deadline,
++                     answer = excluded.answer
++                 WHERE excluded.revision > draft.revision",
++                params![project_id, question_id, revision, goal, deadline, answer],
++            )?;
++            Self::check_quota(&self.jail_root, self.quota, &tx)?;
++        }
++        let current: i64 = tx
++            .query_row(
++                "SELECT revision FROM draft WHERE project_id = ?1 AND question_id = ?2",
++                params![project_id, question_id],
++                |row| row.get(0),
++            )
++            .optional()?
++            .unwrap_or(revision);
++        tx.commit()?;
++        Ok(json!({"applied": applied, "revision": current}))
++    }
++
++    fn commit(
++        &mut self,
++        project_id: &str,
++        expected_version: i64,
++        business: Value,
++    ) -> Result<Value, StoreError> {
++        self.ensure_migrated(project_id)?;
++        let tx = self.conn.transaction()?;
++        let existing: Option<(i64, Option<String>)> = tx
++            .query_row(
++                "SELECT version, business FROM business WHERE project_id = ?1",
++                params![project_id],
++                |row| Ok((row.get(0)?, row.get(1)?)),
++            )
++            .optional()?;
++        let current = existing.as_ref().map(|(version, _)| *version).unwrap_or(0);
++        if current != expected_version {
++            return Err(StoreError::Conflict { version: current });
++        }
++        // A stored record that no longer parses is corruption. Refuse rather
++        // than let a new record silently replace it.
++        if let Some(text) = existing.and_then(|(_, business)| business) {
++            serde_json::from_str::<Value>(&text).map_err(|e| {
++                StoreError::Internal(format!(
++                    "state database: the stored business record is not valid JSON: {e}"
++                ))
++            })?;
++        }
++        let text = business.to_string();
++        let next_version = current + 1;
++        tx.execute(
++            "INSERT INTO business(project_id, version, business) VALUES(?1, ?2, ?3)
++             ON CONFLICT(project_id) DO UPDATE SET version = excluded.version, business = excluded.business",
++            params![project_id, next_version, text],
++        )?;
++        Self::check_quota(&self.jail_root, self.quota, &tx)?;
++        // Read the just-written record back inside the same transaction: the
++        // answer is only returned when the stored bytes are what was sent.
++        let row: Option<(i64, Option<String>)> = tx
++            .query_row(
++                "SELECT version, business FROM business WHERE project_id = ?1",
++                params![project_id],
++                |row| Ok((row.get(0)?, row.get(1)?)),
++            )
++            .optional()?;
++        let (version, stored_text) = row.ok_or_else(|| {
++            StoreError::Internal("state database: the committed record vanished before read-back".into())
++        })?;
++        let stored_text = stored_text.ok_or_else(|| {
++            StoreError::Internal("state database: the committed record has no body".into())
++        })?;
++        let read_back: Value = serde_json::from_str(&stored_text).map_err(|e| {
++            StoreError::Internal(format!("state database: stored JSON is invalid: {e}"))
++        })?;
++        if read_back != business {
++            return Err(StoreError::Internal(
++                "state database: the read-back record differs from the committed one".into(),
++            ));
++        }
++        tx.commit()?;
++        Ok(json!({"version": version, "business": read_back}))
++    }
++}
++
++/// Bytes already occupied by everything in the jail: the SQLite file, the old
++/// JSON records and anything else the app wrote. Used by the tests to measure
++/// a quota baseline; the live check is [`jail_bytes_except_db`] plus the
++/// database's page count.
++#[cfg(test)]
++fn jail_used(jail_root: &Path) -> Result<u64, StoreError> {
++    fn walk(dir: &Path, total: &mut u64) -> std::io::Result<()> {
++        for entry in std::fs::read_dir(dir)? {
++            let entry = entry?;
++            let metadata = entry.metadata()?;
++            if metadata.is_dir() {
++                walk(&entry.path(), total)?;
++            } else {
++                *total = total.saturating_add(metadata.len());
++            }
++        }
++        Ok(())
++    }
++    let mut total = 0;
++    walk(jail_root, &mut total)
++        .map_err(|e| StoreError::Internal(format!("state service: cannot measure the jail: {e}")))?;
++    Ok(total)
++}
++
++/// The database's actual size in the current transaction, including pages the
++/// uncommitted writes have allocated. `PRAGMA page_count` is the pager's live
++/// size, so it reflects page, index and overflow growth before commit.
++fn db_page_bytes(conn: &Connection) -> Result<u64, StoreError> {
++    let page_size: i64 = conn.query_row("PRAGMA page_size", [], |row| row.get(0))?;
++    let page_count: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0))?;
++    Ok((page_size.max(0) as u64).saturating_mul(page_count.max(0) as u64))
++}
++
++/// Every file in the jail except the database file itself: the old JSON
++/// records, the app's own files and the rollback journal. The database's own
++/// bytes come from [`db_page_bytes`], so payload is never counted twice.
++fn jail_bytes_except_db(jail_root: &Path) -> Result<u64, StoreError> {
++    let db_path = jail_root.join(STATE_DB_FILE);
++    fn walk(dir: &Path, db: &Path, total: &mut u64) -> std::io::Result<()> {
++        for entry in std::fs::read_dir(dir)? {
++            let entry = entry?;
++            let path = entry.path();
++            let metadata = entry.metadata()?;
++            if metadata.is_dir() {
++                walk(&path, db, total)?;
++            } else if path != db {
++                *total = total.saturating_add(metadata.len());
++            }
++        }
++        Ok(())
++    }
++    let mut total = 0;
++    walk(jail_root, &db_path, &mut total).map_err(|e| {
++        StoreError::Internal(format!("state service: cannot measure the jail: {e}"))
++    })?;
++    Ok(total)
++}
++
++/// Read and validate both legacy files, returning the newest migrated
++/// business record with the model session dropped.
++fn read_legacy(jail_root: &Path) -> Result<Option<Value>, String> {
++    let mut records: HashMap<&str, (i64, Value)> = HashMap::new();
++    for name in LEGACY_FILES {
++        let path = jail_root.join(name);
++        if !path.exists() {
++            continue;
++        }
++        records.insert(name, read_record(&path)?);
++    }
++    let business = match (records.remove("calendar-a.json"), records.remove("calendar-b.json")) {
++        (None, None) => return Ok(None),
++        (Some(record), None) | (None, Some(record)) => record,
++        (Some((first_seq, first)), Some((second_seq, second))) => {
++            if first_seq > second_seq {
++                (first_seq, first)
++            } else if second_seq > first_seq {
++                (second_seq, second)
++            } else if first == second {
++                (first_seq, first)
++            } else {
++                return Err(format!(
++                    "calendar-a.json and calendar-b.json share sequence {first_seq} with different content"
++                ));
++            }
++        }
++    };
++    let (_, mut record) = business;
++    if let Some(object) = record.as_object_mut() {
++        // The full model session is the server's, not the host's business
++        // record; the resume material stays in the business fields.
++        object.remove("agent");
++    }
++    Ok(Some(record))
++}
++
++fn read_record(path: &Path) -> Result<(i64, Value), String> {
++    let text = std::fs::read_to_string(path)
++        .map_err(|e| format!("{}: {e}", path.display()))?;
++    let envelope: Value =
++        serde_json::from_str(&text).map_err(|e| format!("{}: not JSON: {e}", path.display()))?;
++    let envelope = envelope
++        .as_object()
++        .ok_or_else(|| format!("{}: the record envelope is not an object", path.display()))?;
++    let payload = envelope
++        .get("payload")
++        .and_then(Value::as_str)
++        .ok_or_else(|| format!("{}: payload is missing", path.display()))?;
++    let mirror = envelope
++        .get("mirror")
++        .and_then(Value::as_str)
++        .ok_or_else(|| format!("{}: mirror is missing", path.display()))?;
++    if payload != mirror {
++        return Err(format!("{}: payload and mirror differ", path.display()));
++    }
++    let outer_sequence = envelope
++        .get("sequence")
++        .and_then(Value::as_i64)
++        .ok_or_else(|| format!("{}: sequence is missing", path.display()))?;
++    let record: Value =
++        serde_json::from_str(payload).map_err(|e| format!("{}: payload is not JSON: {e}", path.display()))?;
++    let record = record
++        .as_object()
++        .ok_or_else(|| format!("{}: the record is not an object", path.display()))?;
++    let schema = record
++        .get("schema")
++        .and_then(Value::as_i64)
++        .ok_or_else(|| format!("{}: schema is missing", path.display()))?;
++    if schema != LEGACY_SCHEMA_VERSION {
++        return Err(format!(
++            "{}: schema {schema} is not version {LEGACY_SCHEMA_VERSION}",
++            path.display()
++        ));
++    }
++    let sequence = record
++        .get("sequence")
++        .and_then(Value::as_i64)
++        .filter(|s| *s >= 0)
++        .ok_or_else(|| format!("{}: sequence is missing or negative", path.display()))?;
++    if sequence != outer_sequence {
++        return Err(format!(
++            "{}: the record's sequence {sequence} does not match the envelope's {outer_sequence}",
++            path.display()
++        ));
++    }
++    Ok((sequence, Value::Object(record.clone())))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use std::sync::atomic::AtomicU64;
++
++    static NEXT_JAIL: AtomicU64 = AtomicU64::new(0);
++
++    /// Test databases live under the workspace `target/` directory, which the
++    /// repository already ignores; nothing is written to a system temporary
++    /// directory.
++    fn test_jail(tag: &str) -> PathBuf {
++        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
++            .join("../../target/card-host-state-tests")
++            .join(format!("{}-{tag}-{}", std::process::id(), NEXT_JAIL.fetch_add(1, Ordering::Relaxed)));
++        let _ = std::fs::remove_dir_all(&dir);
++        std::fs::create_dir_all(&dir).expect("test jail");
++        dir
++    }
++
++    /// The steady jail size after the one-time migration bookkeeping: the
++    /// quota baseline a test measures against.
++    fn steady_jail_bytes(jail: &Path) -> u64 {
++        let probe = StateService::start(jail, 64 * 1024 * 1024).expect("probe service");
++        let (status, body) = get(probe.origin(), "/v1/state?projectId=__measure__");
++        assert_eq!(status, 200, "{body}");
++        drop(probe);
++        jail_used(jail).expect("measure jail")
++    }
++
++    /// Start a service whose quota is measured from the real jail, so the
++    /// test never assumes a quota below the database's own size.
++    fn start_with_allowance(jail: &Path, allowance: u64) -> StateService {
++        StateService::start(jail, steady_jail_bytes(jail) + allowance)
++            .expect("service with a measured quota")
++    }
++
++    fn agent() -> ureq::Agent {
++        ureq::Agent::config_builder()
++            .http_status_as_error(false)
++            .timeout_global(Some(Duration::from_secs(10)))
++            .build()
++            .new_agent()
++    }
++
++    fn get(base: &str, path: &str) -> (u16, Value) {
++        let mut response = agent()
++            .get(&format!("{base}{path}"))
++            .call()
++            .expect("GET reaches the state service");
++        let status = response.status().as_u16();
++        let text = response
++            .body_mut()
++            .with_config()
++            .limit(1 << 20)
++            .read_to_string()
++            .expect("response body");
++        (status, serde_json::from_str(&text).unwrap_or(Value::Null))
++    }
++
++    fn post_raw(base: &str, path: &str, body: &str) -> (u16, Value) {
++        let mut response = agent()
++            .post(&format!("{base}{path}"))
++            .header("Content-Type", "application/json")
++            .send(body)
++            .expect("POST reaches the state service");
++        let status = response.status().as_u16();
++        let text = response
++            .body_mut()
++            .with_config()
++            .limit(1 << 20)
++            .read_to_string()
++            .expect("response body");
++        (status, serde_json::from_str(&text).unwrap_or(Value::Null))
++    }
++
++    fn post(base: &str, path: &str, body: &Value) -> (u16, Value) {
++        post_raw(base, path, &body.to_string())
++    }
++
++    fn legacy_envelope(schema: i64, sequence: i64, project: &str) -> String {
++        let record = json!({
++            "schema": schema,
++            "sequence": sequence,
++            "project": {"id": project, "version": 0},
++            "agent": {"session": "the whole model conversation"},
++        })
++        .to_string();
++        json!({"sequence": sequence, "payload": record, "mirror": record}).to_string()
++    }
++
++    #[test]
++    fn a_fresh_store_answers_version_zero() {
++        let jail = test_jail("fresh");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let (status, body) = get(service.origin(), "/v1/state?projectId=loom");
++        assert_eq!(status, 200, "{body}");
++        assert_eq!(body["version"], 0);
++        assert!(body["business"].is_null());
++        assert!(body["draft"].is_null());
++        assert!(jail.join(STATE_DB_FILE).is_file());
++    }
++
++    #[test]
++    fn a_larger_draft_revision_overwrites_and_a_smaller_one_does_not() {
++        let jail = test_jail("draft-order");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let base = service.origin();
++
++        let (status, body) = post(
++            base,
++            "/v1/draft",
++            &json!({"projectId": "loom", "questionId": "q1", "revision": 2,
++                    "goal": "later", "deadline": "2026-10-10", "answer": "yes"}),
++        );
++        assert_eq!(status, 200, "{body}");
++        assert_eq!(body["applied"], true);
++        assert_eq!(body["revision"], 2);
++
++        let (status, body) = post(
++            base,
++            "/v1/draft",
++            &json!({"projectId": "loom", "questionId": "q1", "revision": 1,
++                    "goal": "earlier", "deadline": "2026-10-01", "answer": "no"}),
++        );
++        assert_eq!(status, 200, "{body}");
++        assert_eq!(body["applied"], false);
++        assert_eq!(body["revision"], 2);
++
++        let (status, _) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": {"questionId": "q1"}}),
++        );
++        assert_eq!(status, 200);
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["draft"]["questionId"], "q1");
++        assert_eq!(state["draft"]["revision"], 2);
++        assert_eq!(state["draft"]["goal"], "later");
++        assert_eq!(state["draft"]["answer"], "yes");
++    }
++
++    #[test]
++    fn concurrent_drafts_keep_the_highest_revision() {
++        let jail = test_jail("draft-concurrent");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let origin = service.origin().to_owned();
++        let mut workers = Vec::new();
++        for revision in 1..=8 {
++            let origin = origin.clone();
++            workers.push(std::thread::spawn(move || {
++                let (status, body) = post(
++                    &origin,
++                    "/v1/draft",
++                    &json!({"projectId": "loom", "questionId": "q1", "revision": revision,
++                            "goal": "g", "deadline": "", "answer": ""}),
++                );
++                assert_eq!(status, 200, "{body}");
++            }));
++        }
++        for worker in workers {
++            worker.join().unwrap();
++        }
++        let (status, _) = post(
++            &origin,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": {"questionId": "q1"}}),
++        );
++        assert_eq!(status, 200);
++        let (_, state) = get(&origin, "/v1/state?projectId=loom");
++        assert_eq!(state["draft"]["revision"], 8);
++    }
++
++    #[test]
++    fn reads_the_draft_of_the_current_question_only() {
++        let jail = test_jail("draft-current-question");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let base = service.origin();
++        for (question, revision, answer) in [("q1", 5, "first question answer"), ("q2", 1, "second")] {
++            let (status, _) = post(
++                base,
++                "/v1/draft",
++                &json!({"projectId": "loom", "questionId": question, "revision": revision,
++                        "goal": "g", "deadline": "", "answer": answer}),
++            );
++            assert_eq!(status, 200);
++        }
++
++        // The business record names q2, so only q2's (low revision) draft is
++        // returned even though q1 has a much higher revision.
++        let (status, _) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": {"questionId": "q2"}}),
++        );
++        assert_eq!(status, 200);
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["draft"]["questionId"], "q2");
++        assert_eq!(state["draft"]["answer"], "second");
++
++        // Moving the current question back to q1 returns q1's latest draft.
++        let (status, _) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 1, "business": {"questionId": "q1"}}),
++        );
++        assert_eq!(status, 200);
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["draft"]["questionId"], "q1");
++        assert_eq!(state["draft"]["answer"], "first question answer");
++
++        // A business record without a current question has no draft, even
++        // though both drafts still exist.
++        let (status, _) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 2, "business": {}}),
++        );
++        assert_eq!(status, 200);
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert!(state["draft"].is_null());
++    }
++
++    #[test]
++    fn a_commit_checks_the_version_and_returns_the_read_back_record() {
++        let jail = test_jail("commit");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let base = service.origin();
++        let business = json!({"project": {"id": "loom", "version": 4}, "plan": null});
++
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": business}),
++        );
++        assert_eq!(status, 200, "{body}");
++        assert_eq!(body["version"], 1);
++        assert_eq!(body["business"], business);
++
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": {"stale": true}}),
++        );
++        assert_eq!(status, 409, "{body}");
++        assert_eq!(body["version"], 1);
++
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["version"], 1);
++        assert_eq!(state["business"], business);
++    }
++
++    #[test]
++    fn a_locked_database_aborts_the_commit_without_changing_it() {
++        let jail = test_jail("locked");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let base = service.origin();
++
++        let (status, _) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": {"n": 1}}),
++        );
++        assert_eq!(status, 200);
++
++        // A second real connection holds an exclusive transaction, exactly as
++        // a crash or another writer would mid-commit.
++        let blocker = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        blocker.execute_batch("BEGIN EXCLUSIVE").unwrap();
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 1, "business": {"n": 2}}),
++        );
++        assert_ne!(status, 200, "the locked commit must fail: {body}");
++        blocker.execute_batch("ROLLBACK").unwrap();
++
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["version"], 1);
++        assert_eq!(state["business"], json!({"n": 1}));
++
++        // Once the lock is gone the same commit succeeds.
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 1, "business": {"n": 2}}),
++        );
++        assert_eq!(status, 200, "{body}");
++        assert_eq!(body["version"], 2);
++    }
++
++    #[test]
++    fn migration_picks_the_newer_legacy_record_and_drops_the_agent_session() {
++        let jail = test_jail("migrate");
++        std::fs::write(jail.join("calendar-a.json"), legacy_envelope(3, 1, "loom")).unwrap();
++        std::fs::write(jail.join("calendar-b.json"), legacy_envelope(3, 2, "loom")).unwrap();
++
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let (status, body) = get(service.origin(), "/v1/state?projectId=loom");
++        assert_eq!(status, 200, "{body}");
++        assert_eq!(body["version"], 0);
++        assert_eq!(body["business"]["sequence"], 2);
++        assert_eq!(body["business"]["project"]["id"], "loom");
++        assert!(body["business"].get("agent").is_none(), "the model session is not business state");
++    }
++
++    #[test]
++    fn migration_refuses_a_record_for_another_project() {
++        let jail = test_jail("migrate-project");
++        std::fs::write(jail.join("calendar-a.json"), legacy_envelope(3, 1, "loom")).unwrap();
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++
++        // The record says "loom"; asking for another project must not silently
++        // file it under that name.
++        let (status, body) = get(service.origin(), "/v1/state?projectId=other");
++        assert_eq!(status, 500, "{body}");
++
++        // The mismatch wrote nothing, so the right project still migrates.
++        let (status, body) = get(service.origin(), "/v1/state?projectId=loom");
++        assert_eq!(status, 200, "{body}");
++        assert_eq!(body["business"]["project"]["id"], "loom");
++    }
++
++    #[test]
++    fn migration_refuses_a_broken_record_and_writes_no_row() {
++        let jail = test_jail("migrate-broken");
++        let record = legacy_envelope(3, 1, "loom");
++        let mut envelope: Value = serde_json::from_str(&record).unwrap();
++        envelope["mirror"] = Value::String("something else".into());
++        std::fs::write(jail.join("calendar-a.json"), envelope.to_string()).unwrap();
++
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let (status, body) = get(service.origin(), "/v1/state?projectId=loom");
++        assert_eq!(status, 500, "{body}");
++        // The failure is a read-only check: the store has no business row.
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        let rows: i64 = conn
++            .query_row("SELECT COUNT(*) FROM business", [], |row| row.get(0))
++            .unwrap();
++        assert_eq!(rows, 0);
++    }
++
++    #[test]
++    fn migration_refuses_equal_sequences_that_differ() {
++        let jail = test_jail("migrate-equal");
++        std::fs::write(jail.join("calendar-a.json"), legacy_envelope(3, 5, "loom")).unwrap();
++        std::fs::write(jail.join("calendar-b.json"), legacy_envelope(3, 5, "other")).unwrap();
++
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let (status, body) = get(service.origin(), "/v1/state?projectId=loom");
++        assert_eq!(status, 500, "{body}");
++    }
++
++    #[test]
++    fn page_count_reflects_uncommitted_growth() {
++        let jail = test_jail("page-count");
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        conn.execute_batch("CREATE TABLE t(v TEXT);").unwrap();
++        let before: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0)).unwrap();
++        conn.execute_batch("BEGIN").unwrap();
++        conn.execute("INSERT INTO t(v) VALUES(?1)", params!["x".repeat(200_000)])
++            .unwrap();
++        let during: i64 = conn.query_row("PRAGMA page_count", [], |row| row.get(0)).unwrap();
++        conn.execute_batch("ROLLBACK").unwrap();
++        assert!(during > before, "page_count must grow before commit: {before} -> {during}");
++    }
++
++    #[test]
++    fn a_write_that_grows_the_database_past_the_quota_is_refused() {
++        let jail = test_jail("quota-page-growth");
++        // One byte of headroom: the text would fit the budget, the pages the
++        // database allocates for it do not.
++        let service = start_with_allowance(&jail, 1);
++        let base = service.origin();
++        let (status, body) = post(
++            base,
++            "/v1/draft",
++            &json!({"projectId": "loom", "questionId": "q1", "revision": 1,
++                    "goal": "目标", "deadline": "", "answer": "中".repeat(2000)}),
++        );
++        assert_eq!(status, 507, "{body}");
++
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert!(state["draft"].is_null());
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        let rows: i64 = conn
++            .query_row("SELECT COUNT(*) FROM draft", [], |row| row.get(0))
++            .unwrap();
++        assert_eq!(rows, 0);
++    }
++
++    #[test]
++    fn an_over_quota_jail_refuses_small_and_shrinking_writes() {
++        let jail = test_jail("quota-over");
++        let service = start_with_allowance(&jail, 64 * 1024);
++        let base = service.origin();
++        let business = json!({"project": {"id": "loom"}, "blob": "x".repeat(2048)});
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": business}),
++        );
++        assert_eq!(status, 200, "{body}");
++
++        // The app writes a file of its own, so the jail is now over quota.
++        std::fs::write(jail.join("big.bin"), vec![0u8; 256 * 1024]).unwrap();
++
++        // A tiny Chinese draft is refused.
++        let (status, body) = post(
++            base,
++            "/v1/draft",
++            &json!({"projectId": "loom", "questionId": "q1", "revision": 1,
++                    "goal": "目标", "deadline": "", "answer": "中"}),
++        );
++        assert_eq!(status, 507, "{body}");
++
++        // A commit whose text is far shorter than the stored record is
++        // refused too: a shrinking write must not slip past an over-quota jail.
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 1, "business": {"tiny": true}}),
++        );
++        assert_eq!(status, 507, "{body}");
++
++        // Records are untouched.
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["version"], 1);
++        assert_eq!(state["business"], business);
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        let rows: i64 = conn
++            .query_row("SELECT COUNT(*) FROM draft", [], |row| row.get(0))
++            .unwrap();
++        assert_eq!(rows, 0);
++    }
++
++    #[test]
++    fn repeated_updates_never_exceed_the_quota() {
++        let jail = test_jail("quota-repeat");
++        let quota = steady_jail_bytes(&jail) + 16 * 1024;
++        let service = StateService::start(&jail, quota).unwrap();
++        let base = service.origin();
++        let mut accepted = 0;
++        for step in 0..8 {
++            let text = if step % 2 == 0 { "x".repeat(4096) } else { "y".repeat(64) };
++            let (status, body) = post(
++                base,
++                "/v1/commit",
++                &json!({"projectId": "loom", "expectedVersion": accepted,
++                        "business": {"step": step, "text": text}}),
++            );
++            assert!(
++                status == 200 || status == 507,
++                "unexpected status {status} at step {step}: {body}"
++            );
++            if status == 200 {
++                accepted += 1;
++            }
++            // However the writes went, the jail never sits above the quota.
++            assert!(
++                jail_used(&jail).unwrap() <= quota,
++                "the jail grew past its quota at step {step}"
++            );
++        }
++        let (_, state) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(state["version"], json!(accepted));
++    }
++
++    #[test]
++    fn a_request_larger_than_the_storage_quota_is_refused() {
++        let jail = test_jail("request-limit");
++        let service = start_with_allowance(&jail, 64);
++        let base = service.origin();
++        let used = jail_used(&jail).unwrap();
++
++        // A body larger than the whole grant is refused before it is buffered.
++        let oversized = json!({
++            "projectId": "loom",
++            "expectedVersion": 0,
++            "business": {"blob": "x".repeat(used as usize + 4096)},
++        })
++        .to_string();
++        let (status, body) = post_raw(base, "/v1/commit", &oversized);
++        assert_eq!(status, 413, "{body}");
++
++        // The service stays usable for ordinary requests afterwards.
++        let (status, _) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(status, 200);
++    }
++
++    #[test]
++    fn a_corrupted_business_record_is_an_error_not_a_silent_null() {
++        let jail = test_jail("corrupt");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let base = service.origin();
++        let (status, _) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 0, "business": {"n": 1}}),
++        );
++        assert_eq!(status, 200);
++
++        // Corrupt the stored row out of band, the way a partial write or an
++        // external editor would.
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        conn.execute(
++            "UPDATE business SET business = '{not json' WHERE project_id = 'loom'",
++            [],
++        )
++        .unwrap();
++
++        let (status, body) = get(base, "/v1/state?projectId=loom");
++        assert_eq!(status, 500, "{body}");
++
++        // A commit must not silently replace the corrupt record either.
++        let (status, body) = post(
++            base,
++            "/v1/commit",
++            &json!({"projectId": "loom", "expectedVersion": 1, "business": {"n": 2}}),
++        );
++        assert_eq!(status, 500, "{body}");
++    }
++
++    #[test]
++    fn a_draft_missing_a_field_is_refused() {
++        let jail = test_jail("draft-fields");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let base = service.origin();
++
++        for body in [
++            json!({"projectId": "loom", "questionId": "q1", "revision": 1, "deadline": "", "answer": ""}),
++            json!({"projectId": "loom", "questionId": "q1", "revision": 1, "goal": "g", "answer": ""}),
++            json!({"projectId": "loom", "questionId": "q1", "revision": 1, "goal": "g", "deadline": ""}),
++            json!({"projectId": "loom", "questionId": "q1", "revision": 1, "goal": 7, "deadline": "", "answer": ""}),
++        ] {
++            let (status, response) = post(base, "/v1/draft", &body);
++            assert_eq!(status, 400, "{body} -> {response}");
++        }
++
++        // Nothing was stored.
++        let conn = Connection::open(jail.join(STATE_DB_FILE)).unwrap();
++        let rows: i64 = conn
++            .query_row("SELECT COUNT(*) FROM draft", [], |row| row.get(0))
++            .unwrap();
++        assert_eq!(rows, 0);
++    }
++
++    #[test]
++    fn an_unknown_path_or_credential_is_not_found() {
++        let jail = test_jail("unknown-path");
++        let service = StateService::start(&jail, 1 << 20).unwrap();
++        let origin = service.origin();
++        let port = origin
++            .trim_start_matches("http://127.0.0.1:")
++            .split('/')
++            .next()
++            .unwrap();
++        let (status, _) = get(&format!("http://127.0.0.1:{port}"), "/wrong/v1/state?projectId=loom");
++        assert_eq!(status, 404);
++        let (status, _) = get(origin, "/v1/unknown");
++        assert_eq!(status, 404);
++    }
++}
