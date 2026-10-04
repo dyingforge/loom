@@ -64,16 +64,20 @@ class UsageLedger:
     def pause(self, state: dict) -> str:
         token = secrets.token_urlsafe(32)
         with sqlite3.connect(self.path) as db:
-            db.execute("DELETE FROM pauses WHERE expires < ?", (time.time(),))
             db.execute("INSERT INTO pauses VALUES (?,?,?,0)", (token, json.dumps(state, ensure_ascii=False), time.time() + 86400))
         return token
 
     def resume(self, token: str) -> dict:
+        now = time.time()
         with sqlite3.connect(self.path) as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT state,expires,consumed FROM pauses WHERE token=?", (token,)).fetchone()
-            if row is None or row[1] <= time.time() or row[2]:
-                raise HTTPException(409, "暂停状态无效、过期或已使用，请重新发起规划")
+            if row is None:
+                raise HTTPException(404, detail={"code": "resume_unknown", "message": "恢复凭据不存在，请重新发起规划"})
+            if row[2]:
+                raise HTTPException(409, detail={"code": "resume_consumed", "message": "恢复凭据已使用，请重新发起规划"})
+            if row[1] <= now:
+                raise HTTPException(410, detail={"code": "resume_expired", "message": "恢复凭据已过期，请重新发起规划"})
             db.execute("UPDATE pauses SET consumed=1 WHERE token=?", (token,))
         return json.loads(row[0])
 

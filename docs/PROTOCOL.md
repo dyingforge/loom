@@ -14,13 +14,15 @@
 
 | 结果字段 | 含义 |
 | --- | --- |
-| `type` | `plan`、`clarify` 或 `failed` |
+| `type` | `plan`、`tasks`、`clarify` 或 `failed` |
 | `draftProject` | 生成或修改后的完整候选任务清单 |
-| `payload` | 计划、问题或停止原因 |
-| `state` | 真实规划状态、对话、调用次数与提供方用量 |
-| `trace` | 实际工具调用及约束检查结果 |
+| `payload` | 计划、问题、候选任务或停止原因 |
+| `proposed_tasks` | 任务建议操作提出的候选任务 |
+| `resumeToken` | 暂停时签发的恢复凭据，仅 `clarify` 返回 |
 | `capacity` | 剩余工时、期限内可用工时与缺口 |
 | `calendar` | ISO 时间与日历秒数的对应数据 |
+
+服务独占完整模型会话、对话、工具调用结果与调用计数，只向客户端返回上表中的展示字段。
 
 `compose` 必须调用 `rebuild_tasks` 完成目标拆分。`revise` 根据建议调整任务内容、工时、依赖或时间。重构保留已经开始或完成的工作记录。模型查询真实空闲时段，提交完整排程，并接受工时、依赖、工作时间、固定日程和冲突核验。
 
@@ -42,6 +44,6 @@
 
 ## 补充回答
 
-`type=clarify` 时，客户端显示问题并保存模型返回的候选任务与暂停状态。恢复请求包含 `trigger=resume`、暂停项目、当前时间、`clarificationAnswer` 及带有 `resumeToken` 的状态。
+`type=clarify` 时，客户端显示问题并保存服务端返回的 `resumeToken` 与展示字段。恢复请求包含 `trigger=resume`、当前项目、当前时间、`clarificationAnswer` 和独立的 `resumeToken`，不再携带任何模型会话数据。
 
-服务使用 SQLite 中的暂停状态继续规划。恢复凭据有效期二十四小时且只允许使用一次。每轮最多调用模型十次，同一候选最多提交核验四次，计数由服务保存。
+服务使用 SQLite 中的暂停状态继续规划。恢复凭据有效期二十四小时且恢复时立即消费。未知凭据返回 `404` 与 `resume_unknown`，已消费凭据返回 `409` 与 `resume_consumed`，已过期凭据返回 `410` 与 `resume_expired`。每轮最多调用模型十次，同一候选最多提交核验四次，计数由服务保存。
