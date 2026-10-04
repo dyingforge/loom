@@ -13,6 +13,8 @@ from fastapi import HTTPException
 
 
 class UsageLedger:
+    PAUSE_TTL_SECONDS = 86400
+
     def __init__(self, path: Path, public_limit: float, reviewer_limit: float,
                  input_rate: float, output_rate: float, rate_limit: int):
         self.path = path
@@ -62,24 +64,44 @@ class UsageLedger:
             db.execute("UPDATE calls SET cost=?,usage=?,status='reported' WHERE id=?", (amount, json.dumps(usage), identifier))
 
     def pause(self, state: dict) -> str:
-        token = secrets.token_urlsafe(32)
+        now = time.time()
+        expires = now + self.PAUSE_TTL_SECONDS
+        token = f"{expires:.0f}.{secrets.token_urlsafe(32)}"
         with sqlite3.connect(self.path) as db:
-            db.execute("INSERT INTO pauses VALUES (?,?,?,0)", (token, json.dumps(state, ensure_ascii=False), time.time() + 86400))
+            db.execute("DELETE FROM pauses WHERE expires < ?", (now,))
+            db.execute("INSERT INTO pauses VALUES (?,?,?,0)",
+                       (token, json.dumps(state, ensure_ascii=False), expires))
         return token
 
-    def resume(self, token: str) -> dict:
+    @staticmethod
+    def _token_expiry(token: str) -> float | None:
+        prefix, separator, _ = token.partition(".")
+        if not separator:
+            return None
+        try:
+            return float(prefix)
+        except ValueError:
+            return None
+
+    def resume(self, token: str, project_id: str) -> dict:
         now = time.time()
         with sqlite3.connect(self.path) as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT state,expires,consumed FROM pauses WHERE token=?", (token,)).fetchone()
             if row is None:
+                expiry = self._token_expiry(token)
+                if expiry is not None and expiry <= now:
+                    raise HTTPException(410, detail={"code": "resume_expired", "message": "恢复凭据已过期，请重新发起规划"})
                 raise HTTPException(404, detail={"code": "resume_unknown", "message": "恢复凭据不存在，请重新发起规划"})
             if row[2]:
                 raise HTTPException(409, detail={"code": "resume_consumed", "message": "恢复凭据已使用，请重新发起规划"})
             if row[1] <= now:
                 raise HTTPException(410, detail={"code": "resume_expired", "message": "恢复凭据已过期，请重新发起规划"})
+            data = json.loads(row[0])
+            if data["project"]["id"] != project_id:
+                raise HTTPException(409, detail={"code": "resume_project_mismatch", "message": "恢复请求属于不同项目"})
             db.execute("UPDATE pauses SET consumed=1 WHERE token=?", (token,))
-        return json.loads(row[0])
+        return data
 
 
 class MeteredLLM:

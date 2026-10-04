@@ -123,9 +123,7 @@ def _advance(request: AgentRequest, connection: Request, progress: dict | None) 
     if request.resumeToken is not None:
         if request.trigger != "resume" or not request.clarificationAnswer:
             raise HTTPException(409, "恢复需要用户回答")
-        state = State.from_dict(ledger.resume(request.resumeToken))
-        if state.project.id != request.snapshot.id:
-            raise HTTPException(409, "恢复请求属于不同项目")
+        state = State.from_dict(ledger.resume(request.resumeToken, request.snapshot.id))
         changed = state.project.model_dump() != request.snapshot.model_dump()
         if changed:
             state.trace.append({"type": "context_update", "fromVersion": state.project.version,

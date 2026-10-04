@@ -46,4 +46,4 @@
 
 `type=clarify` 时，客户端显示问题并保存服务端返回的 `resumeToken` 与展示字段。恢复请求包含 `trigger=resume`、当前项目、当前时间、`clarificationAnswer` 和独立的 `resumeToken`，不再携带任何模型会话数据。
 
-服务使用 SQLite 中的暂停状态继续规划。恢复凭据有效期二十四小时且恢复时立即消费。未知凭据返回 `404` 与 `resume_unknown`，已消费凭据返回 `409` 与 `resume_consumed`，已过期凭据返回 `410` 与 `resume_expired`。每轮最多调用模型十次，同一候选最多提交核验四次，计数由服务保存。
+服务使用 SQLite 中的暂停状态继续规划。恢复凭据有效期二十四小时，凭据自身携带可解析的过期时间，服务签发新凭据时清理过期会话；过期凭据无论记录是否已清理都返回 `410` 与 `resume_expired`。恢复时先校验凭据所属项目，校验通过才标记消费，项目不符返回 `409` 与 `resume_project_mismatch` 且不消费凭据。未知有效期内凭据返回 `404` 与 `resume_unknown`，已消费凭据返回 `409` 与 `resume_consumed`。每轮最多调用模型十次，同一候选最多提交核验四次，计数由服务保存。
