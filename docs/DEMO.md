@@ -4,36 +4,38 @@
 
 验证环境为 macOS Apple Silicon、Python 3.9.6、Rust 1.89，模型为 MiniMax-M2.7。Python 依赖记录在 `requirements.txt`。
 
-| 组件 | 固定上游提交 | 本轮修复提交 |
-| --- | --- | --- |
-| Makepad | `c155f61d0e1600d2ec474209374444a38a09a470` | `08f0e08aa7873b7ce1a633f86185a52be63a017d` |
-| OctoSense-App-Hub | `e014fa9c596cdbd95de5cf9fb2a6b4fc2b781d17` | `3599b69909898a76cbc454077ef552dc543ddeb4` |
-| octoscript-makepad | `2cc5ef37d7d6a3d2992673389ce74488f7bb2d87` | 同上游 |
-| octoscript | `5991dfae9344589e732b2605b530f788e8bbcd11` | 同上游 |
-| OctoScript-App-Design-Flow | `a5a87d3c3ff305768ae46bc5f6689abb48115cc4` | 同上游 |
+| 组件 | 固定提交 |
+| --- | --- |
+| OctoSense-App-Hub | `0d5b47a2ae9eb98020feca26b7c895a3cf797dc1` |
+| Makepad | `c155f61d0e1600d2ec474209374444a38a09a470` |
+| octoscript-makepad | `2cc5ef37d7d6a3d2992673389ce74488f7bb2d87` |
+| octoscript | `5991dfae9344589e732b2605b530f788e8bbcd11` |
 
-`native/LOCK.json` 记录 Makepad、OctoSense-App-Hub、octoscript-makepad 与 octoscript 四个原生依赖仓库的官方地址、提交包校验值、补丁顺序与构建命令。OctoScript-App-Design-Flow 是准备运行环境的作者工具，其固定版本为 `a5a87d3c3ff305768ae46bc5f6689abb48115cc4`，不在原生构建的四个依赖之列，未记录在该文件中。按固定来源准备并构建原生宿主：
+`native/LOCK.json` 记录 OctoSense-App-Hub 及其 `Cargo.toml` 引用的 Makepad、octoscript-makepad 与 octoscript 四个官方仓库的地址、提交与构建命令。按固定来源准备并构建原生宿主：
 
 ```sh
 python3 scripts/build_native.py
-python3 scripts/build_native.py --verify   # 只验证锁定记录、提交包与现有源码，不构建
+python3 scripts/build_native.py --verify   # 只验证锁定记录与现有源码，不构建
 ```
 
-脚本在被 Git 忽略的 `.scratch/native` 中检出固定源码；Makepad 与 App Hub 的修复提交从 `native/bundles/` 中的 Git 提交包取回，不使用 `git apply` 改写依赖源码。构建产物位于 `.scratch/native/OctoSense-App-Hub/target/release/`。
+脚本在被 Git 忽略的 `.scratch/native` 中检出四个官方提交，执行 `cargo build --release --locked` 构建 `hub` 和 `card-host`，不使用 `git apply` 改写依赖源码。构建产物位于 `.scratch/native/OctoSense-App-Hub/target/release/`。
 
 新设备先按官方 OctoScript-App-Design-Flow 的 `docs/QUICKSTART.md` 准备 Rust 与系统依赖，然后运行 `python3 scripts/build_native.py`。本机的默认客户端路径为 `.scratch/native/OctoSense-App-Hub/target/release/card-host`，使用 `python3 scripts/run_client.py` 启动；`run_client.py` 会拒绝未按锁定来源构建的宿主。
 
-在项目根目录的 `.env` 中填写 `MINIMAX_API_KEY`，参考 `.env.example`。启动服务：
+提交服务使用环境文件中的 MiniMax 凭据，由服务端通过 `LOOM_ENV_FILE` 加载。启动本机单个 Uvicorn 进程：
 
 ```sh
 python3 -m pip install -r requirements.txt
-python3 scripts/run_dev_server.py
+LOOM_ENV_FILE=/path/to/.env PORT=8010 LOOM_USAGE_DB=$PWD/.scratch/service/loom.sqlite3 \
+LOOM_DAILY_COST_LIMIT_CENTS=1000 LOOM_RATE_LIMIT=60 python3 scripts/run_dev_server.py
 ```
 
-客户端通过 `https://quotes-geographical-per-foreign.trycloudflare.com` 访问本机服务。保持服务和当前 Cloudflare 隧道运行。需要重新创建开发隧道时运行：
+当前提交实例使用 `PORT=8010`、`LOOM_USAGE_DB=.scratch/service/loom.sqlite3`、每日公共额度 1000 美分、每 IP 每分钟 60 次，凭据来自 `LOOM_ENV_FILE` 指定的环境文件。
+
+客户端通过 `https://tariff-boards-bradley-theory.trycloudflare.com` 访问本机服务。保持服务和当前 Cloudflare 隧道运行。需要重新创建开发隧道时运行：
 
 ```sh
-.scratch/native/cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate --protocol http2
+.scratch/native/cloudflared tunnel --url http://127.0.0.1:8010 --no-autoupdate --protocol http2
 ```
 
 将新地址填写到 `bundle/main.splash` 的 `api_origin`，将裸域名填写到 `bundle/manifest.json` 的 `network.hosts`，同时更新 `bundle/listing.json` 的隐私说明地址。
@@ -44,17 +46,7 @@ python3 scripts/run_dev_server.py
 python3 scripts/run_client.py
 ```
 
-启动窗口为 1440×1000，默认数据目录为 `.local-state/calendar`。启动器读取设备时区。新日历使用独立的保存格式，从空白月历开始。
-
-### 内存统计诊断
-
-隔离脚本的内存统计默认关闭。需要时在启动命令前设置 `LOOM_MEMORY_TELEMETRY=1`：
-
-```sh
-LOOM_MEMORY_TELEMETRY=1 python3 scripts/run_client.py
-```
-
-每次隔离脚本入口（一次求值、回调或绘制）向 `<数据目录>/card-host.log` 写一条结构化 JSON，默认路径为 `.local-state/calendar/card-host.log`。字段含义：`kind` 固定为 `loom.memory.entry`；`vm` 是隔离 VM 标识；`retainedBefore`/`retainedAfter` 是入口前后堆的保留字节估算；`allocatedBytes` 是本次入口实际计费的字节数（累计分配值的前后差值，跨回收仍然准确）；`collectionsBefore`/`collectionsAfter` 是前后完成的回收次数；`reuseBuffersBefore`/`reuseBuffersAfter` 与 `reuseBytesBefore`/`reuseBytesAfter` 是前后字符串复用缓冲区的数量与总容量。诊断只记录数字，不记录脚本值、用户输入、恢复凭据或网络正文；未设置该变量时不写日志，脚本时间预算与超限终止行为不变。
+启动窗口为 1440×1000，默认数据目录为 `.local-state/calendar`。客户端固定东八区（UTC+8），不读取设备时区文件。日历使用 `state-a.json` 与 `state-b.json` 交替保存的完整 JSON 快照，从空白月历开始。
 
 ## 演示操作
 
@@ -70,36 +62,24 @@ LOOM_MEMORY_TELEMETRY=1 python3 scripts/run_client.py
 
 ## 自动验证
 
-使用空的数据目录启动真实客户端，并执行控件验证：
+`scripts/check_release.py` 是发布验收入口，依次运行官方宿主与真实文件存储检查、真实客户端目标生成/修改/确认/重启/候选与正式切换、真实中断服务与重新确认、真实客户端草稿与追问、真实服务错误与额度检查，以及最终 `hub check`。结果写入 `.scratch/release-check/`：
+
+```sh
+LOOM_ENV_FILE=/path/to/.env python3 scripts/check_release.py
+```
+
+单独运行真实客户端日历流程时，使用空的数据目录启动真实客户端并驱动各阶段：
 
 ```sh
 python3 scripts/run_client.py --hidden --state .scratch/calendar-demo
 python3 scripts/check_demo.py --state .scratch/calendar-demo
 ```
 
-脚本验证跨年、六行月份、普通二月、闰年二月、无效日期、真实模型生成、当天完整安排、首次确认和文字建议修改。证据写入 `docs/evidence/calendar-demo.json`。
-
-验证候选与正式计划恢复、确认修改后的计划：
-
-```sh
-curl -s http://127.0.0.1:8144/quit
-python3 scripts/run_client.py --hidden --state .scratch/calendar-demo
-python3 scripts/check_demo.py --state .scratch/calendar-demo --phase restore-candidate
-```
-
-再次关闭并启动，验证正式日历与核验回执恢复：
-
-```sh
-curl -s http://127.0.0.1:8144/quit
-python3 scripts/run_client.py --hidden --state .scratch/calendar-demo
-python3 scripts/check_demo.py --state .scratch/calendar-demo --phase restore
-```
-
-实际中断服务后，可以在候选状态运行 `--phase verify-failure`，检查确认失败时正式日历与候选内容仍然保存。重新启动服务和客户端后，运行 `--phase retry-confirm` 验证恢复核验。
+`check_demo.py` 读取 `<state>/loom.pm-calendar/state-a.json` 与 `state-b.json` 中序号最大的记录，用真实控件文本验证正式/候选切换，用保存后的业务记录验证阶段与正式项目。`--phase verify-failure` 在服务中断时验证确认失败并保留候选，`--phase retry-confirm` 在服务恢复后验证重新确认。
 
 ## 使用范围
 
-演示面向单用户、单设备和应用内日历。工作时间为周一至周五 09:00–18:00，截止日期对应当天 18:00。输入接受未来一年内的有效日期。设备当前 UTC 偏移用于解释无偏移日历时间；涉及未来夏令时变化时，需要确认时间安排。
+演示面向单用户、单设备和应用内日历。工作时间为周一至周五 09:00–18:00，截止日期对应当天 18:00。输入接受未来一年内的有效日期。设备时间固定为东八区（UTC+8），用于解释无偏移日历时间。
 
 每次计划最多包含十二项任务。未来时间块为模型计算和用户确认预留至少十五分钟。已经开始或完成的工作记录受到保护。生成与修改需要有效 HTTPS 服务和模型凭据；失败时显示真实原因，并提供重新生成或重新确认入口。
 

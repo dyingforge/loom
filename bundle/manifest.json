@@ -6,12 +6,12 @@
   ],
   "id": "loom.pm-calendar",
   "integrity": {
-    "bundle_blake3": "ee1e2fc1735a2a0e8b52157abe214ee564d885f75f9300385876c9e5795c89ed"
+    "bundle_blake3": "ccd190ad47a2a0a0d86a6c2fdc466c367dddb835f7d209699f2d7fab3e314ecb"
   },
   "name": "Loom 目标日历",
   "network": {
     "hosts": [
-      "quotes-geographical-per-foreign.trycloudflare.com"
+      "tariff-boards-bradley-theory.trycloudflare.com"
     ]
   },
   "schema": 1,

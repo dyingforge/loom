@@ -198,7 +198,6 @@ class ClientStateCheck:
         raise AssertionError(f"等待超时：{describe}")
 
     def run(self):
-        self.build_native()
         self.prepare_bundle()
         self.start_client()
 
@@ -231,7 +230,7 @@ class ClientStateCheck:
         business = self.wait_until("真实模型追问", self.clarify_business, 180)
         question_id = business["questionId"]
         question = business["question"]
-        assert question_id not in ("", "initial") and question, business
+        assert question_id not in ("", "initial") and question, "模型没有返回有效追问"
         self.results["真实追问"] = {"questionId": question_id, "question": question}
 
         answers = ["安排在本周五上午 10 点。", "安排在本周五上午 10 点，方便大家参加。"]
@@ -281,8 +280,9 @@ class ClientStateCheck:
         if record is None:
             return None
         phase = record.get("phase")
-        if phase in ("candidate", "failed", "confirmed"):
-            return phase
+        assert phase != "failed", phase
+        if phase == "candidate":
+            return "candidate"
         if phase == "clarify" and record.get("questionId") != question_id:
             return "clarify"
         return None
