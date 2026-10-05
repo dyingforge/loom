@@ -38,7 +38,7 @@ LOOM_DAILY_COST_LIMIT_CENTS=1000 LOOM_RATE_LIMIT=60 python3 scripts/run_dev_serv
 .scratch/native/cloudflared tunnel --url http://127.0.0.1:8010 --no-autoupdate --protocol http2
 ```
 
-将新地址填写到 `bundle/main.splash` 的 `api_origin`，将裸域名填写到 `bundle/manifest.json` 的 `network.hosts`，同时更新 `bundle/listing.json` 的隐私说明地址。
+将新地址填写到 `bundle/main.splash` 的 `api_origin`，将裸域名填写到 `bundle/manifest.json` 的 `network.hosts`。隐私入口固定为 `bundle/listing.json` 中版本标签的 GitHub 文档，不随隧道变化。
 
 启动应用：
 

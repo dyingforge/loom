@@ -13,7 +13,7 @@ AppHub 接收 `bundle/` 中的 Splash 程序、清单、图标、字体和真实
 | 检查项目 | 结果 | 发布前需要完成的工作 |
 | --- | --- | --- |
 | 应用身份 | `loom.pm-calendar`，版本 `0.1.0` | 在最终提交前重新核查目录中的版本记录 |
-| 应用包检查 | 现有 `hub check` 通过；只有未签名提示 | 使用提交时的官方检查工具复查最终文件 |
+| 应用包检查 | 本次 `hub check --allow-unsigned --catalog` 通过；首次提交选择 `unsigned` | 提交前用当前官方工具复查最终文件 |
 | 目录检查 | 下载的官方目录 sequence 为 4；带目录的检查通过 | 提交前重新下载并验证目录 |
 | 权限 | `storage`、`net`，存储额度 4 MiB，`agent: null` | 服务域名与实际请求保持一致 |
 | 图标与截图 | 清单引用的文件存在，应用包磁盘占用约 4.4 MiB | 在发布目标环境重新验证真实操作和截图 |
@@ -64,7 +64,7 @@ AppHub 接收 `bundle/` 中的 Splash 程序、清单、图标、字体和真实
 ```sh
 "$LOOM_HUB_BIN" stamp bundle
 "$LOOM_HUB_BIN" check bundle --allow-unsigned --catalog "$LOOM_HUB_CATALOG"
-"$LOOM_HUB_BIN" scan bundle --packet .scratch/apphub-research/final-review.json
+"$LOOM_HUB_BIN" scan bundle --packet .scratch/apphub-release/review.json
 ```
 
 官方允许首次提交使用未签名应用包。已有签名发布记录的发布者，其后续版本和同一发布者的新应用需要使用已记录的密钥。签名规则见[官方签名要求](https://github.com/OctoSense-org/OctoSense-App-Hub/blob/main/docs/PUBLISHING.md#signing)。签名发布时，在文件确定后运行：
