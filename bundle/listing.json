@@ -2,9 +2,9 @@
   "schema": 1,
   "subtitle": "填写目标，自动安排每一天",
   "publisher": {
-    "name": "Loom Agent",
+    "name": "dyingforge",
     "support": "https://github.com/dyingforge/loom/issues",
-    "privacy_policy_url": "https://quotes-geographical-per-foreign.trycloudflare.com/privacy"
+    "privacy_policy_url": "https://github.com/dyingforge/loom/blob/v0.1.0/docs/PRIVACY.md"
   },
   "category": "productivity",
   "platforms": ["macos"],

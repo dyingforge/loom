@@ -21,7 +21,7 @@ python3 scripts/run_dev_server.py
 python3 scripts/build_native.py
 ```
 
-脚本在被 Git 忽略的 `.scratch/native` 中检出四个依赖仓库，从本项目版本管理的 Git 提交包取回 Makepad 与 App Hub 的修复提交，执行 `cargo build --release --locked` 构建 `hub` 和 `card-host`，并在二进制旁写入构建标记。只检查锁定记录、提交包与现有源码而不构建时运行：
+脚本在被 Git 忽略的 `.scratch/native` 中检出四个官方提交，执行 `cargo build --release --locked` 构建 `hub` 和 `card-host`，并在二进制旁写入构建标记。只检查锁定记录与现有源码而不构建时运行：
 
 ```sh
 python3 scripts/build_native.py --verify
@@ -35,37 +35,18 @@ python3 scripts/run_client.py
 
 `run_client.py` 会核对构建标记，未按锁定来源构建的旧原生宿主会被拒绝。客户端通过公开 HTTPS 服务请求模型，域名需要同时出现在 `bundle/main.splash` 的 `api_origin` 和 `bundle/manifest.json` 的 `network.hosts` 中。
 
-## 内存统计诊断
-
-隔离脚本的内存统计默认关闭。需要时在启动命令前设置 `LOOM_MEMORY_TELEMETRY=1`：
-
-```sh
-LOOM_MEMORY_TELEMETRY=1 python3 scripts/run_client.py
-```
-
-每次隔离脚本入口（一次求值、回调或绘制）向客户端日志 `<数据目录>/card-host.log` 写一条结构化 JSON，默认数据目录为 `.local-state/calendar`，即日志在 `.local-state/calendar/card-host.log`。字段含义：
-
-- `kind`：固定为 `loom.memory.entry`。
-- `vm`：隔离 VM 标识。
-- `retainedBefore`、`retainedAfter`：该次入口前后堆的保留字节估算。
-- `allocatedBytes`：该次入口实际计费的字节数，为累计分配值的前后差值，跨回收仍然准确。
-- `collectionsBefore`、`collectionsAfter`：前后完成的标记清扫回收次数。
-- `reuseBuffersBefore`、`reuseBuffersAfter`：前后停放复用的字符串缓冲区数量。
-- `reuseBytesBefore`、`reuseBytesAfter`：前后停放复用的字符串缓冲区总容量。
-
-诊断只记录数字，不记录脚本值、用户输入、恢复凭据或网络正文。未设置该变量时不写这些日志，脚本时间预算与超限终止行为不变。
-
-当前开发连接通过已经运行的 Cloudflare 临时隧道访问本机服务。临时连接在隧道终止后失效，重新启动隧道需要更新上述两个位置。正式演示设备需要保持服务和隧道运行，或者配置持续运行的 HTTPS 服务。
-
 ## 演示与验证
 
-[演示说明](docs/DEMO.md) 记录具体操作、运行环境和使用限制。[日历验收记录](docs/evidence/calendar-demo.json) 来自真实控件操作、真实模型响应和本地文件回读。
+[演示说明](docs/DEMO.md) 记录具体操作、运行环境和使用限制。
 
 ```sh
 python3 -m pytest -q server/tests
+LOOM_ENV_FILE=/path/to/.env python3 scripts/check_release.py
 ```
 
-`scripts/check_demo.py` 驱动真实客户端验证月历日期、目标生成、文字修改、确认核验及恢复，启动时使用空的数据目录。`scripts/check_service.py` 检查真实服务的启动、超时、提供方错误和额度限制，需要模型凭据。
+`scripts/check_release.py` 依次运行真实存储、真实客户端状态与日历、真实服务错误与额度检查及最终 `hub check`，结果写入 `.scratch/release-check/`。`scripts/check_demo.py` 读取 `state-a.json`/`state-b.json` 快照验证月历与计划流程，`scripts/check_service.py` 检查服务启动、超时、提供方错误和额度限制；真实模型检查需要 HTTPS 服务与模型凭据。
+
+客户端固定东八区（UTC+8），本地业务记录保存在应用目录的 `state-a.json` 与 `state-b.json` 两份交替快照中。服务端使用 SQLite 保存暂停对话与使用额度。
 
 ## 代码与资料
 

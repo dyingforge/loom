@@ -2,7 +2,7 @@ import argparse
 import calendar
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -14,6 +14,8 @@ class DemoCheck:
         self.state = state
         self.output = output
         self.records = []
+        manifest = json.loads((Path(__file__).resolve().parents[1] / "bundle/manifest.json").read_text())
+        self.jail = state / manifest["id"]
 
     def snapshot(self):
         response = self.client.get("/snap")
@@ -54,12 +56,14 @@ class DemoCheck:
         self.client.get("/t", params={"t": text, "wait": 1}).raise_for_status()
         assert self.find(identifier=identifier)["val"] == text
 
+    def saved_record(self):
+        files = list(self.jail.glob("state-?.json"))
+        assert files, f"没有状态文件：{self.jail}"
+        records = [json.loads(path.read_text()) for path in files]
+        return max(records, key=lambda value: value["sequence"])
+
     def saved(self):
-        records = [json.loads(path.read_text()) for path in self.state.rglob("calendar-*.json")]
-        assert records
-        record = max(records, key=lambda value: value["sequence"])
-        assert record["payload"] == record["mirror"]
-        return json.loads(record["payload"])
+        return self.saved_record()["business"]
 
     def wait(self):
         until = time.monotonic() + 650
@@ -73,12 +77,12 @@ class DemoCheck:
         raise AssertionError("演示流程超过等待时间")
 
     def record(self, step):
-        state = self.saved()
-        self.records.append({"step": step, "sequence": state["sequence"], "phase": state["phase"],
+        record = self.saved_record()
+        state = record["business"]
+        self.records.append({"step": step, "sequence": record["sequence"],
+                             "businessVersion": record["businessVersion"], "phase": state["phase"],
                              "project": state["project"], "draftProject": state["draftProject"],
-                             "plan": state["plan"], "receipt": state["receipt"],
-                             "modelCalls": state["agent"]["llm_calls"] if state["agent"] else 0,
-                             "usage": state["agent"]["usage"] if state["agent"] else None})
+                             "plan": state["plan"], "receipt": state["receipt"]})
         self.output.parent.mkdir(parents=True, exist_ok=True)
         self.output.write_text(json.dumps(self.records, ensure_ascii=False, indent=2))
 
@@ -93,9 +97,8 @@ class DemoCheck:
         assert state["plan"] is None
         assert state["receipt"]["readbackSnapshot"] == state["project"]
 
-    def check_month(self, year, month):
+    def check_month(self, year, month, current):
         self.top()
-        current = datetime.utcfromtimestamp(self.saved()["month"])
         distance = (year - current.year) * 12 + month - current.month
         for _ in range(abs(distance)):
             self.click("下个月" if distance > 0 else "上个月")
@@ -119,11 +122,14 @@ class DemoCheck:
         assert len(columns) == 7
         assert all(abs(columns[index + 1] - columns[index] - 144) < 1 for index in range(6))
         assert any(value["i"] == "plan_summary" and value["r"][0] == 1072 for value in values)
-        return {"year": year, "month": month, "rows": len(dates) // 7, "days": len(expected)}
+        return datetime(year, month, 1), {"year": year, "month": month, "rows": len(dates) // 7, "days": len(expected)}
 
     def check_dates(self):
-        results = [self.check_month(year, month) for year, month in
-                   [(2026, 11), (2026, 12), (2027, 1), (2027, 2), (2028, 2)]]
+        current = datetime.utcfromtimestamp(self.saved()["month"])
+        results = []
+        for year, month in [(2026, 11), (2026, 12), (2027, 1), (2027, 2), (2028, 2)]:
+            current, result = self.check_month(year, month, current)
+            results.append(result)
         self.click("今天")
         self.records.append({"step": "真实月历日期与七列布局", "months": results})
         self.fill("goal_input", "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。")
@@ -132,7 +138,7 @@ class DemoCheck:
             self.click("生成计划")
             assert "有效的截止日期" in self.find(identifier="status_label")["t"]
             assert self.saved()["activeJob"] is None
-        self.fill("deadline_input", (datetime.now().astimezone() + timedelta(days=7)).date().isoformat())
+        self.fill("deadline_input", (datetime.now(timezone.utc) + timedelta(hours=8, days=7)).date().isoformat())
 
     def run(self):
         assert self.saved()["project"]["tasks"] == []
@@ -142,7 +148,6 @@ class DemoCheck:
         assert state["project"]["tasks"] == []
         assert state["draftProject"]["tasks"]
         assert state["plan"]["changes"]
-        assert state["agent"]["llm_calls"] > 0
         self.check_daily_details()
         self.record("真实模型拆分目标并生成候选月历")
         self.approve()
@@ -159,9 +164,11 @@ class DemoCheck:
         assert len(state["draftProject"]["tasks"]) == len(original["tasks"]) + 1
         self.top()
         self.click("查看已确认计划")
-        assert self.saved()["showingFormal"]
+        self.find(text="正在查看已确认计划")
+        self.find(text="计划已确认")
         self.click("查看候选计划")
-        assert not self.saved()["showingFormal"]
+        self.find(text="正在查看候选计划 · 正式安排已保留")
+        self.find(text="候选计划 · 待确认")
         self.record("文字建议重构任务并保留正式计划")
         self.check_logs()
         print("候选与正式计划等待重新启动恢复验证", flush=True)

@@ -17,9 +17,9 @@ AppHub 接收 `bundle/` 中的 Splash 程序、清单、图标、字体和真实
 | 目录检查 | 下载的官方目录 sequence 为 4；带目录的检查通过 | 提交前重新下载并验证目录 |
 | 权限 | `storage`、`net`，存储额度 4 MiB，`agent: null` | 正式服务域名与实际请求保持一致 |
 | 图标与截图 | 清单引用的文件存在，应用包磁盘占用约 4.4 MiB | 在发布目标环境重新验证真实操作和截图 |
-| 业务存储 | 客户端调用 `{{state}}/v1/state`、`/v1/draft`、`/v1/commit` | 官方宿主需要提供经过审核的对应能力 |
-| 启动时区 | `boot()` 读取由 `run_client.py` 写入的 `device.json` | 商店启动路径需要提供设备时间配置 |
-| 公网服务 | 客户端仍使用 `trycloudflare.com` 临时地址 | 配置持续运行的正式 HTTPS 服务 |
+| 业务存储 | 客户端使用官方 `fs` 在应用目录交替写入 `state-a.json`/`state-b.json` 快照 | 已完成，不需要宿主额外能力 |
+| 启动时区 | 客户端固定东八区（UTC+8），不读取设备时间文件 | 已完成 |
+| 公网服务 | 客户端当前使用 Cloudflare 临时隧道地址 | 配置持续运行的正式 HTTPS 服务 |
 | 发布资料 | 清单已有名称、支持链接和隐私链接 | 发布者确认身份及正式隐私内容 |
 | 审核资料 | 已生成 `hub scan` 的七项审核问题 | 对最终应用包逐项提供回答和证据 |
 
@@ -27,30 +27,15 @@ AppHub 接收 `bundle/` 中的 Splash 程序、清单、图标、字体和真实
 
 ## 官方宿主兼容性
 
-### 业务存储服务
+### 业务存储
 
-`bundle/main.splash` 使用 `state_origin = "{{state}}"`。`native/patches/app-hub-state.patch` 为 `card-host` 添加了 SQLite 服务、主机许可和占位符替换。
+`bundle/main.splash` 使用官方 `fs` 文件能力，在应用目录交替写入 `state-a.json` 与 `state-b.json` 两份完整快照，不依赖自定义宿主服务。当前发布包针对官方 AppHub 提交 `0d5b47a2ae9eb98020feca26b7c895a3cf797dc1` 构建和验证，不需要宿主提供额外业务存储能力。
 
-核查时，官方 AppHub `main` 提交为 `9e7f0778429125402dcfefef95ba2b01e8de7b94`；官方 OctoSense `main` 提交为 `d9d3b8be67614d894ccc685bebb3234a8e467193`，其 Cargo 配置固定 AppHub 为 `0d5b47a2ae9eb98020feca26b7c895a3cf797dc1`。
-
-这两个 AppHub 版本的商店应用运行代码均未提供 Loom 使用的业务存储服务。当前官方入口处理只替换 `{{assets}}`。依据为[官方商店应用运行代码](https://github.com/OctoSense-org/OctoSense-App-Hub/blob/9e7f0778429125402dcfefef95ba2b01e8de7b94/crates/appstore/src/cardapp.rs)和[脚本入口代码](https://github.com/OctoSense-org/OctoSense-App-Hub/blob/9e7f0778429125402dcfefef95ba2b01e8de7b94/crates/app-contract/src/entry.rs)。
-
-发布准备需要把业务存储能力提交给上游维护者审核，并接入正式商店应用运行路径。随后验证目标 OctoSense 版本已经包含该能力。仅构建项目自己的 `card-host` 无法给其他安装者增加这项能力。
-
-`native/LOCK.json` 固定的 Makepad 内存管理、终止处理和诊断补丁也需要在正式宿主版本上核查。应用包无法安装原生运行代码；涉及新增运行能力的要求见[官方开发指南](https://github.com/OctoSense-org/OctoSense-App-Hub/blob/main/docs/DEVELOPMENT.md#choose-the-appropriate-delivery-path)。
+`native/LOCK.json` 固定官方 OctoSense-App-Hub 提交及其 `Cargo.toml` 引用的 Makepad 与 Octoscript；项目不带私有原生补丁。应用包不能安装原生运行代码；涉及新增运行能力的要求见[官方开发指南](https://github.com/OctoSense-org/OctoSense-App-Hub/blob/main/docs/DEVELOPMENT.md#choose-the-appropriate-delivery-path)。
 
 ### 首次启动与设备时区
 
-`scripts/run_client.py` 在启动前把设备时区和 UTC 偏移写入应用数据目录的 `device.json`。`bundle/main.splash` 第 447 行直接读取该文件。AppHub 安装后的启动过程不会执行本项目的 Python 启动脚本。
-
-本次使用空白应用数据目录、现有修复版 `card-host` 和隐藏窗口直接运行真实应用，日志显示：
-
-```text
-card-host: loom.pm-calendar 0.1.0 admitted
-splash:4911337984:451:26 - file not found
-```
-
-错误发生在读取 `device.json` 的位置。测试实例已通过 `/quit` 关闭。发布目标宿主需要提供正式的设备时间配置，客户端从该配置完成首次初始化。发布验收必须覆盖空白安装、重新启动以及设备时区变化。
+客户端固定东八区（UTC+8），不再读取或生成设备时间文件，AppHub 安装后的启动过程不需要本项目的 Python 启动脚本。官方宿主对空白应用数据目录的首次启动会初始化 `state-a.json`，并显示东八区当前日期与七天后的初始截止日期。
 
 ## 正式服务部署
 
@@ -63,7 +48,7 @@ splash:4911337984:451:26 - file not found
 - 按实际运营预算设置公共每日额度、评审额度和请求频率。本项目客户端当前未发送 `x-loom-reviewer-token`；评审专用额度的使用需要单独验证。
 - 验证 `/healthz`、`/privacy`、真实目标生成、文字修改和保存核验。服务重新启动会终止内存中的规划过程，客户端需要正确显示该结果。
 
-本次访问当前临时域名的 `/healthz` 和 `/privacy` 均未完成 TLS 连接，返回 HTTP 000。这项结果说明本次未验证该地址可用。
+当前 Cloudflare 临时隧道的 `/healthz` 与 `/privacy` 已验证返回 200，真实客户端通过该地址完成目标生成、修改、确认与重新确认。临时隧道不是永久服务，正式提交需要持续运行的地址。
 
 正式域名确定后，更新 `bundle/main.splash` 的 `api_origin`、`bundle/manifest.json` 的 `network.hosts`、`bundle/listing.json` 的 `publisher.privacy_policy_url`。更新隐私说明中的实际数据处理、保留期限、删除方式和联系方式，并更新演示说明。
 

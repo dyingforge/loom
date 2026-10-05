@@ -198,7 +198,6 @@ class ClientStateCheck:
         raise AssertionError(f"等待超时：{describe}")
 
     def run(self):
-        self.build_native()
         self.prepare_bundle()
         self.start_client()
 

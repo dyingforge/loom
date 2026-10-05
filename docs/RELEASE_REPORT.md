@@ -9,18 +9,19 @@
 - `bundle/main.splash`：原生目标日历与完整交互。
 - `bundle/assets/fonts/`：Noto Sans SC、Manrope 和字体授权。
 - `server/`：MiniMax 连接、任务重构、日历约束和保存核验。
-- `scripts/run_client.py`：窗口、设备时区和数据目录启动配置。
+- `scripts/run_client.py`：窗口与数据目录启动配置。
+- `scripts/check_release.py`：发布验收入口。
 - `scripts/check_demo.py`：真实控件、模型调用和恢复验证。
 - `docs/DEMO.md`、`docs/PROTOCOL.md`、`docs/PRIVACY.md`：演示、协议与数据说明。
 
 ## 验证
 
-环境为 macOS Apple Silicon、Python 3.9.6、按 `native/LOCK.json` 固定来源和修复提交构建的 card-host、MiniMax-M2.7 和实际 Cloudflare HTTPS 连接。
+环境为 macOS Apple Silicon、Python 3.9.6、按 `native/LOCK.json` 固定官方提交构建的 card-host、MiniMax-M2.7 和实际 Cloudflare HTTPS 连接。客户端固定东八区，本地业务记录使用 `state-a.json` 与 `state-b.json` 快照。
 
-五十九项自动测试覆盖日历约束、完整回读核验、任务重构与工作记录保护、容量、权限、使用记录和架构。主流程证据记录于 `docs/evidence/calendar-demo.json`。界面按 Figma 数据和实际控件几何信息检查。
+六十四项自动测试覆盖日历约束、保存核验、任务重构与工作记录保护、容量、权限、使用记录和架构。真实客户端与模型验收证据写入 `.scratch/release-check/`。界面按 Figma 数据和实际控件几何信息检查。
 
 ## 演示运行
 
 启动步骤见 `docs/DEMO.md`。开发 HTTPS 地址要求本机服务和隧道持续运行。重新创建隧道后，需要同步客户端地址、主机清单和隐私说明链接。
 
-初赛成果使用本地原生客户端。正式发布需要官方宿主兼容性验证、持续运行的公网服务、发布资料、真实截图和应用包检查。首次提交允许未签名，已有签名发布记录的后续提交需要使用登记密钥。具体资料见 [正式提交所需资料](OPEN_QUESTIONS.md) 和 [AppHub 发布准备](APPHUB_PUBLISHING.md)。
+交付使用按官方 `native/LOCK.json` 提交构建的本地 card-host。正式发布需要持续运行的公网服务、发布资料、真实截图和应用包检查。首次提交允许未签名，已有签名发布记录的后续提交需要使用登记密钥。具体资料见 [正式提交所需资料](OPEN_QUESTIONS.md) 和 [AppHub 发布准备](APPHUB_PUBLISHING.md)。

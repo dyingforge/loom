@@ -7,10 +7,8 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT / ".env")
 ARTIFACTS = ROOT / ".scratch" / "service-check" / uuid4().hex
 ARTIFACTS.mkdir(parents=True)
 
