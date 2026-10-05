@@ -5,7 +5,7 @@ import socket
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -105,13 +105,7 @@ class ClientStateCheck:
         sys.path.insert(0, str(ROOT / "scripts"))
         import run_client
         run_client.check_native_build(HOST.resolve())
-        manifest = json.loads((self.bundle / "manifest.json").read_text())
-        device_dir = self.app_data / manifest["id"]
-        device_dir.mkdir(parents=True, exist_ok=True)
-        local = datetime.now().astimezone()
-        timezone_name = Path("/etc/localtime").resolve().as_posix().split("zoneinfo/")[-1]
-        (device_dir / "device.json").write_text(json.dumps(
-            {"utcOffset": local.utcoffset().total_seconds() / 3600, "timezone": timezone_name}))
+        self.app_data.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, TMPDIR=str(self.run_dir / "tmp"),
                    MAKEPAD_REMOTE=str(self.remote_port), MAKEPAD_HIDE_WINDOWS="1")
         log = (self.run_dir / "card-host.log").open("a")
@@ -208,7 +202,7 @@ class ClientStateCheck:
         self.prepare_bundle()
         self.start_client()
 
-        deadline = (datetime.now().astimezone() + timedelta(days=30)).date().isoformat()
+        deadline = (datetime.now(timezone(timedelta(hours=8))) + timedelta(days=30)).date().isoformat()
         goals = ["产品功能演示准备", "准备产品功能演示", "准备产品功能演示和讲解", COMPOSE_GOAL]
         self.remote.focus("goal_input")
         for goal in goals:

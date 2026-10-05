@@ -53,7 +53,7 @@ fn default_state() { return {schema: 3, project: default_project(), draftProject
     pendingVerification: nil, calendar: {}, capacity: nil, formalCapacity: nil, activeJob: nil,
     lastRequest: nil, phase: "idle", error: "", savedAt: "", confirmedRationale: "", confirmedRisks: [],
     questionId: "initial", question: "", resumeToken: "", workingProject: nil,
-    utcOffset: 0, timezone: "", month: 0, selectedDay: 0, showingFormal: false} }
+    utcOffset: 8, timezone: "Asia/Shanghai", month: 0, selectedDay: 0, showingFormal: false} }
 let project = default_project()
 let app_state = default_state()
 let displayed = project
@@ -63,6 +63,7 @@ let loaded = false
 let progress_text = ""
 let status_text = "填写目标与截止日期，自动生成每日安排"
 let api_origin = "https://quotes-geographical-per-foreign.trycloudflare.com"
+let beijing_offset_hours = 8
 let business_version = 0
 let saved_sequence = 0
 let saved_file = ""
@@ -82,7 +83,7 @@ fn calendar_iso(epoch) {
 }
 fn date_text(epoch) { return calendar_iso(epoch).split("T")[0] }
 fn clock_text(epoch) { let parts = local_time(epoch); return padded(parts.hour) + ":" + padded(parts.minute) }
-fn now_epoch() { return time_now() + app_state.utcOffset * 3600 }
+fn now_epoch() { return time_now() + beijing_offset_hours * 3600 }
 fn current_iso() { return calendar_iso(now_epoch()) }
 fn today_epoch() { return floor(now_epoch() / 86400) * 86400 }
 fn month_start(epoch) { return floor(epoch / 86400) * 86400 - (local_time(epoch).day - 1) * 86400 }
@@ -481,14 +482,13 @@ fn load_persisted() {
     return {mode: "stopped", record: nil, file: "", message: "本地记录全部无效，停止初始化并保留文件"}
 }
 fn boot() {
-    let device = fs.read("device.json").parse_json()
     let recovered = load_persisted()
     if recovered.mode == "stopped" {
         // 记录全部无效时停止初始化，保留文件，只展示空白界面和明确提示。
         storage_error = recovered.message
-        app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
+        app_state.utcOffset = beijing_offset_hours; app_state.timezone = "Asia/Shanghai"
         if app_state.month == 0 { app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch() }
-        ui.timezone_label.set_text("设备时区 · " + app_state.timezone)
+        ui.timezone_label.set_text("东八区 · UTC+8")
         show_status(recovered.message)
         refresh()
         return
@@ -500,8 +500,8 @@ fn boot() {
     } else {
         app_state = default_state(); business_version = 0; saved_sequence = 0; saved_file = ""
     }
-    // 设备时区属于本机，恢复业务记录之后应用，不被旧记录覆盖。
-    app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
+    // 客户端固定东八区，恢复业务记录之后应用，不被旧记录覆盖。
+    app_state.utcOffset = beijing_offset_hours; app_state.timezone = "Asia/Shanghai"
     if !has_field(app_state, "questionId") or app_state.questionId == "" { app_state.questionId = "initial" }
     project = clone_value(app_state.project)
     draft_question = app_state.questionId
@@ -520,7 +520,7 @@ fn boot() {
     if app_state.month == 0 { app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch() }
     ui.goal_input.set_text(draft_goal); ui.deadline_input.set_text(draft_deadline)
     ui.advice_input.set_text(draft_answer)
-    ui.timezone_label.set_text("设备时区 · " + app_state.timezone)
+    ui.timezone_label.set_text("东八区 · UTC+8")
     loaded = true; editing_goal = project.goal == "" and app_state.draftProject == nil and app_state.lastRequest == nil
     if recovered.mode == "fresh" {
         if !save_business() { loaded = false; return }
@@ -544,7 +544,7 @@ SolidView{width: Fill height: Fill flow: Down draw_bg.color: #xf5f7f6
         Text{text: "Loom" draw_text.text_style: english}
         Text{text: "目标与日历" draw_text.color: muted}
         View{width: Fill height: 1}
-        timezone_label := Small{text: "设备时区"}
+        timezone_label := Small{text: "东八区 · UTC+8"}
         RoundedView{width: Fit height: 28 padding: Inset{left: 12 right: 12} align: Align{y: 0.5} draw_bg +: {color: brand_soft border_radius: 8}
             Small{text: "本地日历" draw_text.color: brand}
         }
