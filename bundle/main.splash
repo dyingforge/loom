@@ -158,7 +158,7 @@ fn persist(business, draft, bump) {
     let record = {schema: 1, sequence: next_sequence, businessVersion: next_version, business: business, draft: draft}
     let text = record.to_json()
     if text == nil or text == "" { storage_error = "本地记录序列化失败"; return false }
-    # 每次写到另一份文件，回读比较后再更新序号和业务版本；失败就停止本次操作。
+    // 每次写到另一份文件，回读比较后再更新序号和业务版本；失败就停止本次操作。
     let target = if saved_file == "state-a.json" { "state-b.json" } else { "state-a.json" }
     fs.write(target, text)
     let read_back = fs.read(target)
@@ -180,10 +180,11 @@ fn save_business() {
     return true
 }
 fn save_draft() {
-    if !loaded { return }
-    # 修订号在客户端内单调递增，不因切换问题重置。
+    if !loaded { return false }
+    // 修订号在客户端内单调递增，不因切换问题重置。
     draft_revision = draft_revision + 1
-    if !persist(app_state, current_draft(), false) { show_status("本地记录保存失败：" + storage_error) }
+    if !persist(app_state, current_draft(), false) { show_status("本地记录保存失败：" + storage_error); return false }
+    return true
 }
 fn show_status(text) { status_text = text; ui.status_label.set_text(text); ui.status_label.set_visible(true) }
 fn refresh_actions() { ui.generate_action.render(); ui.revision_action.render() }
@@ -373,8 +374,8 @@ fn revise_plan() {
         let answer = ui.advice_input.text().trim()
         if answer == "" { show_status("请填写你的回答"); return }
         draft_answer = answer
-        # 同步保存最新输入后再提交回答。
-        save_draft()
+        // 同步保存最新输入后再提交回答；保存失败立即停止该次提交。
+        if !save_draft() { return }
         launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "",
             resumeToken: app_state.resumeToken, clarificationAnswer: answer, now: current_iso()}); return
     }
@@ -407,7 +408,7 @@ fn verify_pending() {
     busy = true; app_state.phase = "verifying"
     if !save_business() { busy = false; refresh(); return }
     show_status("正在保存并核验完整日历"); refresh()
-    # 待确认 target 写入文件后重新读取，核验使用这次回读的数据。
+    // 待确认 target 写入文件后重新读取，核验使用这次回读的数据。
     let readback = latest_persisted_business()
     if readback == nil {
         storage_error = "本地记录回读失败"
@@ -431,7 +432,7 @@ fn verify_pending() {
         if saved { show_status("计划尚未确认：" + receipt.reason) }
         refresh(); return
     }
-    # 正式项目、回执和清除候选作为一次保存；保存及回读成功后才更新正式项目。
+    // 正式项目、回执和清除候选作为一次保存；保存及回读成功后才更新正式项目。
     let next_state = clone_value(app_state)
     next_state.project = clone_value(pending.target); next_state.receipt = receipt
     next_state.savedAt = current_iso(); next_state.confirmedRationale = pending.plan.rationale
@@ -483,7 +484,7 @@ fn boot() {
     let device = fs.read("device.json").parse_json()
     let recovered = load_persisted()
     if recovered.mode == "stopped" {
-        # 记录全部无效时停止初始化，保留文件，只展示空白界面和明确提示。
+        // 记录全部无效时停止初始化，保留文件，只展示空白界面和明确提示。
         storage_error = recovered.message
         app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
         if app_state.month == 0 { app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch() }
@@ -499,7 +500,7 @@ fn boot() {
     } else {
         app_state = default_state(); business_version = 0; saved_sequence = 0; saved_file = ""
     }
-    # 设备时区属于本机，恢复业务记录之后应用，不被旧记录覆盖。
+    // 设备时区属于本机，恢复业务记录之后应用，不被旧记录覆盖。
     app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
     if !has_field(app_state, "questionId") or app_state.questionId == "" { app_state.questionId = "initial" }
     project = clone_value(app_state.project)
@@ -511,7 +512,7 @@ fn boot() {
     if recovered.mode == "recovered" {
         let draft = recovered.record.draft
         draft_revision = draft.revision
-        # 新问题只恢复该 questionId 的草稿。
+        // 新问题只恢复该 questionId 的草稿。
         if draft.questionId == app_state.questionId and draft.projectId == project.id {
             draft_goal = draft.goal; draft_deadline = draft.deadline; draft_answer = draft.answer
         }

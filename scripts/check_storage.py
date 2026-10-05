@@ -171,13 +171,18 @@ class StorageCheck:
         if self.process is None:
             return
         if self.process.poll() is None:
-            self.process.terminate()
+            Remote(self.remote_port).quit()
             until = time.monotonic() + 20
             while self.process.poll() is None and time.monotonic() < until:
                 time.sleep(0.2)
             if self.process.poll() is None:
-                self.process.kill()
-                self.process.wait()
+                self.process.terminate()
+                until = time.monotonic() + 20
+                while self.process.poll() is None and time.monotonic() < until:
+                    time.sleep(0.2)
+                if self.process.poll() is None:
+                    self.process.kill()
+                    self.process.wait()
         self.process = None
         self.remote = None
 

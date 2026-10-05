@@ -43,6 +43,9 @@ class Remote:
     def value(self, identifier):
         return self.find(identifier)["val"]
 
+    def quit(self):
+        self.client.get("/quit").raise_for_status()
+
     def click_value(self, value, wait=1):
         x, y, width, height = value["r"]
         self.client.get("/click", params={"x": x + width / 2, "y": y + height / 2, "wait": wait}).raise_for_status()
@@ -135,13 +138,18 @@ class ClientStateCheck:
         if self.client_process is None:
             return
         if self.client_process.poll() is None:
-            self.client_process.terminate()
+            Remote(self.remote_port).quit()
             until = time.monotonic() + 20
             while self.client_process.poll() is None and time.monotonic() < until:
                 time.sleep(0.2)
             if self.client_process.poll() is None:
-                self.client_process.kill()
-                self.client_process.wait()
+                self.client_process.terminate()
+                until = time.monotonic() + 20
+                while self.client_process.poll() is None and time.monotonic() < until:
+                    time.sleep(0.2)
+                if self.client_process.poll() is None:
+                    self.client_process.kill()
+                    self.client_process.wait()
         self.client_process = None
         self.remote = None
 
