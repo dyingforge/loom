@@ -6,17 +6,15 @@
 - 版本：`0.1.0`
 - 仓库：`https://github.com/dyingforge/loom`
 - 标签：`v0.1.0`
-- commit SHA：`<由编排者在发布提交确定后填写>`
 - 应用包路径：`bundle/`
 - 发布者：`dyingforge`
-- 签名：`unsigned`（首次提交选择未签名，责任由应用包摘要与官方目录承担）
+- 签名：`unsigned`（首次提交使用未签名应用包）
 - 平台：macOS（Apple Silicon）
 - 类别：`productivity`
 - 能力：`storage`、`net`，存储额度 4 MiB，`agent` 为 `null`
 - 官方目录：sequence `4`（2026-09-20）；`loom.pm-calendar 0.1.0` 不在目录中
 - 官方宿主：`native/LOCK.json` 固定的 OctoSense-App-Hub `0d5b47a2ae9eb98020feca26b7c895a3cf797dc1` 构建的 `card-host` 与 `hub`
 - 服务地址：`https://tariff-boards-bradley-theory.trycloudflare.com`
-- 审核问题包：`.scratch/apphub-release/review.json`
 
 ## 官方检查输出
 
@@ -70,13 +68,15 @@ loom.pm-calendar 0.1.0 — PASSED
 建议 `pass`。
 
 - 功能与描述一致，权限与实际行为一致，平台与类别匹配。
-- 客户端使用官方宿主能力，保存全部在本机应用目录；只有用户发起的目标生成与修改会把项目内容和修改建议经声明的 HTTPS 主机发送到服务端，再由服务端发送给 MiniMax。
+- 客户端使用官方宿主能力，保存全部在本机应用目录。用户发起的目标生成、文字修改和追问回答会把项目内容、时间与输入经声明的 HTTPS 主机发送到服务端，再由服务端发送给 MiniMax 完成规划；确认核验在同一 Loom 服务端执行，不调用 MiniMax。
 - 已通过官方 `hub check --allow-unsigned --catalog`，只有未签名提示。
 
 ## 远程处理
 
-- 生成与修改：客户端把项目快照、当前时间和修改建议经声明的 HTTPS 主机发送到服务端 `/v1/agent/jobs`；服务端把这些内容与工具调用历史发送给 MiniMax 完成规划。
-- 确认核验：客户端确认计划时，把原始项目、候选项目、计划和实际回读项目发送到同一服务的 `/v1/calendar/verify`。该请求只做本地约束与回读比较，**不调用 MiniMax**。
+- 目标生成：客户端把项目快照、当前时间和目标经声明的 HTTPS 主机发送到服务端 `/v1/agent/jobs`；服务端把这些内容与工具调用历史发送给 MiniMax 完成规划。
+- 文字修改：客户端把候选项目、当前时间和修改建议发送到 `/v1/agent/jobs`（`trigger=revise`）；服务端发送给 MiniMax 完成重构。
+- 回答追问：客户端把候选项目、当前时间、回答和恢复凭据发送到 `/v1/agent/jobs`（`trigger=resume`）；服务端发送给 MiniMax 继续规划。
+- 确认核验：客户端确认计划时，把原始项目、候选项目、计划和实际回读项目发送到同一服务的 `/v1/calendar/verify`。该请求在 Loom 服务端执行约束检查与回读比较，**不调用 MiniMax**。
 - 应用包不包含密钥、恢复凭据和个人数据；服务端密钥由 `LOOM_ENV_FILE` 指定的环境文件提供。
 
 ## 验证状态
