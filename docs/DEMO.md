@@ -35,7 +35,7 @@ LOOM_DAILY_COST_LIMIT_CENTS=1000 LOOM_RATE_LIMIT=60 python3 scripts/run_dev_serv
 客户端通过 `https://tariff-boards-bradley-theory.trycloudflare.com` 访问本机服务。保持服务和当前 Cloudflare 隧道运行。需要重新创建开发隧道时运行：
 
 ```sh
-.scratch/native/cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate --protocol http2
+.scratch/native/cloudflared tunnel --url http://127.0.0.1:8010 --no-autoupdate --protocol http2
 ```
 
 将新地址填写到 `bundle/main.splash` 的 `api_origin`，将裸域名填写到 `bundle/manifest.json` 的 `network.hosts`，同时更新 `bundle/listing.json` 的隐私说明地址。

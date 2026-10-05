@@ -20,10 +20,10 @@ AppHub 接收 `bundle/` 中的 Splash 程序、清单、图标、字体和真实
 | 业务存储 | 客户端使用官方 `fs` 在应用目录交替写入 `state-a.json`/`state-b.json` 快照 | 已完成，不需要宿主额外能力 |
 | 启动时区 | 客户端固定东八区（UTC+8），不读取设备时间文件 | 已完成 |
 | 公网服务 | 客户端当前使用 Cloudflare 临时隧道地址 | 保持临时隧道运行；隧道地址变化时同步更新 |
-| 发布资料 | 清单已有名称、支持链接和隐私链接 | 发布者确认身份及正式隐私内容 |
-| 审核资料 | 已生成 `hub scan` 的七项审核问题 | 对最终应用包逐项提供回答和证据 |
+| 发布资料 | 清单已有名称 `dyingforge`、支持链接 `https://github.com/dyingforge/loom/issues` 和隐私链接 `https://github.com/dyingforge/loom/blob/v0.1.0/docs/PRIVACY.md` | 已完成 |
+| 审核资料 | 七项审核问题已逐项回答 | 已完成，见[审核回答](APPHUB_SUBMISSION.md) |
 
-本次检查使用主项目已有的 `hub`，其构建记录指向 AppHub 修复提交 `3599b69909898a76cbc454077ef552dc543ddeb4`。本次没有构建最新官方工具，也没有完成官方桌面客户端中的安装与运行验证。
+当前核查使用 `native/LOCK.json` 固定的官方 OctoSense-App-Hub 提交 `0d5b47a2ae9eb98020feca26b7c895a3cf797dc1` 构建的 `hub` 与 `card-host`；官方 `hub check`、真实文件存储、真实客户端模型流程与服务检查均已通过。尚未在官方桌面客户端中完成安装与运行验证。
 
 ## 官方宿主兼容性
 
@@ -51,11 +51,11 @@ AppHub 接收 `bundle/` 中的 Splash 程序、清单、图标、字体和真实
 
 ## 发布资料和验证
 
-发布者确认清单中的显示名称、支持联系方式、隐私内容和稳定的 publisher id。现有清单声明 `macos`；发布资料只声明真实验证的平台。
+清单已确定发布者 `dyingforge`、支持入口 `https://github.com/dyingforge/loom/issues` 与隐私入口 `https://github.com/dyingforge/loom/blob/v0.1.0/docs/PRIVACY.md`。现有清单声明 `macos`；发布资料只声明真实验证的平台。
 
 按最终发布环境运行目标生成、文字修改、确认核验、正式与候选计划切换、重新启动恢复、网络失败和额度耗尽流程。截图来自该应用的真实运行状态。官方要求图标和至少一张截图，截图数量最多八张；具体要求见[发布流程](https://github.com/OctoSense-org/OctoScript-App-Design-Flow/blob/main/docs/PUBLISHING.md)。
 
-本次生成的审核问题文件为 `.scratch/apphub-research/review.json`。最终版本需要重新生成审核资料，并回答功能与描述、平台与类别、权限与主机用途、界面真实性、面向助手的指令、文字内容以及审核建议七项问题。
+七项审核问题的回答保存在[审核回答](APPHUB_SUBMISSION.md)；最终版本提交前用当前官方工具重新生成审核资料。
 
 ## 最终检查、签名与提交
 
@@ -86,16 +86,16 @@ AppHub 接收 `bundle/` 中的 Splash 程序、清单、图标、字体和真实
 
 维护者完成审核与发布后，以其给出的 catalog sequence 确认上架，并在正式客户端验证安装、打开和重新启动。
 
-## 本次检查证据
+## 当前检查证据
 
 检查输出：
 
 ```text
 loom.pm-calendar 0.1.0 — PASSED
   [warning] publisher-signature: unsigned: accountability rests on the hub alone
-  grants: capabilities {"net", "storage"}, hosts {"quotes-geographical-per-foreign.trycloudflare.com"}, storage 4194304 bytes, agent none
+  grants: capabilities {"net", "storage"}, hosts {"tariff-boards-bradley-theory.trycloudflare.com"}, storage 4194304 bytes, agent none
 ```
 
-带目录的检查退出状态为 0。`hub scan` 成功生成七项审核问题，没有调用外部审核者。本次未创建发布者密钥、版本标签或提交 Issue。
+带目录的检查退出状态为 0。七项审核问题的回答保存在[审核回答](APPHUB_SUBMISSION.md)，最终提交前用当前官方工具重新运行 `hub scan` 和 `hub check`。尚未创建发布者密钥、版本标签或提交 Issue。
 
-中间资料保存在 Git 忽略的 `.scratch/apphub-research/`，包括官方文档、源码、目录、检查输出、审核问题和首次启动日志。
+中间资料保存在 Git 忽略的 `.scratch/`，包括官方文档、目录、检查输出、审核回答与真实客户端证据。

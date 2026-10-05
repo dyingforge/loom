@@ -7,6 +7,11 @@ from pathlib import Path
 
 import httpx
 
+GENERATE_ANSWER = ("按原始演示目标安排：包含新增记录、列表、本地保存、编写讲解说明四项，每项约半小时至一小时；"
+                   "只在周一至周五 09:00–18:00 的工作时间安排，不占用周末。")
+REVISE_ANSWER = ("允许调整尚未开始的任务安排，保留原有任务标题、工时，以及已经开始或完成的记录；"
+                 "新增独立任务“演示设备检查”，工时 0.5 小时，并安排在其他任务之前。")
+
 
 class DemoCheck:
     def __init__(self, remote: str, state: Path, output: Path):
@@ -65,15 +70,36 @@ class DemoCheck:
     def saved(self):
         return self.saved_record()["business"]
 
-    def wait(self):
-        until = time.monotonic() + 650
-        while time.monotonic() < until:
+    def answer_clarification(self, state, answer):
+        question = state.get("question", "")
+        resume_token = state.get("resumeToken", "")
+        assert question, "模型追问为空"
+        assert resume_token, "追问缺少恢复凭据"
+        assert state.get("workingProject") is not None, "追问缺少候选项目"
+        self.records.append({"step": "真实模型追问", "question": question})
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.output.write_text(json.dumps(self.records, ensure_ascii=False, indent=2))
+        self.fill("advice_input", answer)
+        self.click("提交回答并继续")
+
+    def wait(self, answer, limit=3):
+        deadline = time.monotonic() + 650
+        asked = 0
+        while time.monotonic() < deadline:
             state = self.saved()
-            if state["phase"] not in ("generating", "revising", "verifying"):
-                print(state["phase"], state["error"], flush=True)
-                assert state["phase"] in ("candidate", "confirmed"), state
+            phase = state["phase"]
+            if phase in ("generating", "revising", "verifying"):
+                time.sleep(1)
+                continue
+            if phase in ("candidate", "confirmed"):
+                print(phase, flush=True)
                 return state
-            time.sleep(1)
+            if phase == "clarify":
+                asked = asked + 1
+                assert asked <= limit, "模型追问次数超过上限"
+                self.answer_clarification(state, answer)
+                continue
+            raise AssertionError(f"规划停止：{phase}")
         raise AssertionError("演示流程超过等待时间")
 
     def record(self, step):
@@ -91,11 +117,30 @@ class DemoCheck:
         assert before["plan"] is not None
         assert before["plan"]["baseVersion"] == before["project"]["version"]
         self.click("确认修改后的计划" if before["project"]["tasks"] else "确认计划")
-        state = self.wait()
+        state = self.wait(REVISE_ANSWER)
         assert state["receipt"]["status"] == "verified"
         assert state["project"]["version"] == before["project"]["version"] + 1
         assert state["plan"] is None
         assert state["receipt"]["readbackSnapshot"] == state["project"]
+
+    def repeat_confirm(self):
+        before = self.saved()
+        assert before["plan"] is not None
+        assert before["plan"]["baseVersion"] == before["project"]["version"]
+        button = self.find(text="确认修改后的计划" if before["project"]["tasks"] else "确认计划")
+        self.click_value(button)
+        self.click_value(button)
+        state = self.wait(GENERATE_ANSWER)
+        assert state["receipt"]["status"] == "verified"
+        assert state["project"]["version"] == before["project"]["version"] + 1
+        assert state["plan"] is None
+        assert state["receipt"]["readbackSnapshot"] == state["project"]
+        self.records.append({"step": "同一候选连续确认两次只增加一个版本",
+                             "versionBefore": before["project"]["version"],
+                             "versionAfter": state["project"]["version"],
+                             "receiptStatus": state["receipt"]["status"]})
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.output.write_text(json.dumps(self.records, ensure_ascii=False, indent=2))
 
     def check_month(self, year, month, current):
         self.top()
@@ -144,21 +189,20 @@ class DemoCheck:
         assert self.saved()["project"]["tasks"] == []
         self.check_dates()
         self.click("生成计划")
-        state = self.wait()
+        state = self.wait(GENERATE_ANSWER)
         assert state["project"]["tasks"] == []
         assert state["draftProject"]["tasks"]
         assert state["plan"]["changes"]
         self.check_daily_details()
         self.record("真实模型拆分目标并生成候选月历")
-        self.approve()
-        self.record("确认计划并核验本地保存结果")
+        self.repeat_confirm()
         self.revise()
 
     def revise(self):
         original = self.saved()["project"]
         self.fill("advice_input", "请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。")
         self.click("根据建议修改")
-        state = self.wait()
+        state = self.wait(REVISE_ANSWER)
         assert state["project"] == original
         assert any(task["title"] == "演示设备检查" for task in state["draftProject"]["tasks"])
         assert len(state["draftProject"]["tasks"]) == len(original["tasks"]) + 1
@@ -230,7 +274,7 @@ class DemoCheck:
         assert state["pendingVerification"] is not None
         assert "重新确认核验" in self.find(identifier="status_label")["t"]
         self.click("重新确认计划")
-        assert self.wait()["receipt"]["status"] == "verified"
+        assert self.wait(REVISE_ANSWER)["receipt"]["status"] == "verified"
         self.record("重新启动后恢复待核验候选并成功确认")
         self.check_logs()
 
