@@ -63,15 +63,15 @@ let loaded = false
 let progress_text = ""
 let status_text = "填写目标与截止日期，自动生成每日安排"
 let api_origin = "https://quotes-geographical-per-foreign.trycloudflare.com"
-let state_origin = "{{state}}"
 let business_version = 0
+let saved_sequence = 0
+let saved_file = ""
+let storage_error = ""
 let draft_question = "initial"
 let draft_revision = 0
 let draft_goal = ""
 let draft_deadline = ""
 let draft_answer = ""
-let draft_promise = nil
-let draft_promise_revision = 0
 
 fn clone_value(value) { return value.to_json().parse_json() }
 fn has_field(value, name) { for key item in value { if "" + key == name { return true } }; return false }
@@ -83,19 +83,6 @@ fn calendar_iso(epoch) {
 fn date_text(epoch) { return calendar_iso(epoch).split("T")[0] }
 fn clock_text(epoch) { let parts = local_time(epoch); return padded(parts.hour) + ":" + padded(parts.minute) }
 fn now_epoch() { return time_now() + app_state.utcOffset * 3600 }
-fn state_error(outcome) {
-    if outcome.failed != "" { return outcome.failed }
-    if outcome.response.status_code >= 400 {
-        let raw = outcome.response.body.to_string().trim()
-        let message = "本地记录请求失败（HTTP " + outcome.response.status_code + "）"
-        if raw.search("{") == 0 {
-            let body = raw.parse_json()
-            if has_field(body, "error") { message = message + "：" + detail_text(body.error) }
-        }
-        return message
-    }
-    return ""
-}
 fn current_iso() { return calendar_iso(now_epoch()) }
 fn today_epoch() { return floor(now_epoch() / 86400) * 86400 }
 fn month_start(epoch) { return floor(epoch / 86400) * 86400 - (local_time(epoch).day - 1) * 86400 }
@@ -133,50 +120,70 @@ fn plan_project(base, approved) {
     result.version = base.version + 1
     return result
 }
-fn state_request(path, body) {
-    let pending = promise(); let finished = false
-    let timer = start_timeout(30, || {
-        if !finished { finished = true; pending.resolve({failed: "本地记录服务超过等待时间", response: nil}) }
-    })
-    net.http_request(net.HttpRequest{
-        url: state_origin + path method: if body == nil { net.HttpMethod.GET } else { net.HttpMethod.POST }
-        headers: {"Content-Type": "application/json"} body: if body == nil { nil } else { body.to_json().to_bytes() }
-    }) do net.HttpEvents{
-        on_response: |response| {
-            if !finished { finished = true; stop_timer(timer); pending.resolve({failed: "", response: response}) }
-        }
-        on_error: |error| { if !finished { finished = true; stop_timer(timer); pending.resolve({failed: error.message, response: nil}) } }
-    }
-    return pending
+let record_fields = ["schema", "sequence", "businessVersion", "business", "draft"]
+let business_fields = ["schema", "project", "draftProject", "plan", "receipt", "pendingVerification",
+    "calendar", "capacity", "formalCapacity", "activeJob", "lastRequest", "phase", "error", "savedAt",
+    "confirmedRationale", "confirmedRisks", "questionId", "question", "resumeToken", "workingProject",
+    "utcOffset", "timezone", "month", "selectedDay", "showingFormal"]
+let draft_fields = ["projectId", "questionId", "revision", "goal", "deadline", "answer"]
+fn complete_record(record) {
+    if record == nil or !record.is_object() { return false }
+    for field in record_fields { if !has_field(record, field) { return false } }
+    if record.schema != 1 or record.sequence < 1 or record.businessVersion < 0 { return false }
+    let business = record.business
+    if business == nil or !business.is_object() { return false }
+    for field in business_fields { if !has_field(business, field) { return false } }
+    let saved_project = business.project
+    if saved_project == nil or !saved_project.is_object() or !has_field(saved_project, "id") { return false }
+    let draft = record.draft
+    if draft == nil or !draft.is_object() { return false }
+    for field in draft_fields { if !has_field(draft, field) { return false } }
+    if draft.projectId != saved_project.id or draft.questionId == "" { return false }
+    return true
 }
-fn load_state() {
-    let outcome = state_request("/v1/state?projectId=" + project.id, nil).await()
-    let error = state_error(outcome)
-    if error != "" { show_status("读取本地记录失败：" + error); return nil }
-    return outcome.response.body.to_string().parse_json()
+fn parse_record(text) {
+    if text == nil or text == "" { return nil }
+    let value = text.parse_json()
+    if value == nil or !complete_record(value) { return nil }
+    return value
 }
-fn commit_business() {
-    let outcome = state_request("/v1/commit", {projectId: project.id, expectedVersion: business_version, business: clone_value(app_state)}).await()
-    if outcome.failed != "" { show_status("保存业务记录失败：" + outcome.failed); return false }
-    let status = outcome.response.status_code
-    let body = outcome.response.body.to_string().parse_json()
-    if status == 409 {
-        # 版本冲突说明业务记录已被更新；不用旧快照覆盖，停止当前操作。
-        show_status("保存业务记录失败：本地记录已被更新，请重启后再操作")
-        return false
+fn read_record(path) {
+    if !fs.exists(path) { return nil }
+    return parse_record(fs.read(path))
+}
+fn persist(business, draft, bump) {
+    let next_sequence = saved_sequence + 1
+    let next_version = business_version
+    if bump { next_version = next_version + 1 }
+    let record = {schema: 1, sequence: next_sequence, businessVersion: next_version, business: business, draft: draft}
+    let text = record.to_json()
+    if text == nil or text == "" { storage_error = "本地记录序列化失败"; return false }
+    # 每次写到另一份文件，回读比较后再更新序号和业务版本；失败就停止本次操作。
+    let target = if saved_file == "state-a.json" { "state-b.json" } else { "state-a.json" }
+    fs.write(target, text)
+    let read_back = fs.read(target)
+    if read_back != text { storage_error = "本地记录写入后回读不一致"; return false }
+    let parsed = parse_record(read_back)
+    if parsed == nil { storage_error = "本地记录回读内容不完整"; return false }
+    if parsed.sequence != next_sequence or parsed.businessVersion != next_version {
+        storage_error = "本地记录回读字段不一致"; return false
     }
-    if status >= 400 { show_status("保存业务记录失败：" + state_error(outcome)); return false }
-    business_version = body.version; app_state = clone_value(body.business)
+    saved_sequence = next_sequence; saved_file = target; business_version = next_version
+    return true
+}
+fn current_draft() {
+    return {projectId: project.id, questionId: draft_question, revision: draft_revision,
+        goal: draft_goal, deadline: draft_deadline, answer: draft_answer}
+}
+fn save_business() {
+    if !persist(app_state, current_draft(), true) { show_status("本地记录保存失败：" + storage_error); return false }
     return true
 }
 fn save_draft() {
     if !loaded { return }
-    # 修订号在客户端内单调递增，不因切换问题重置；回到 initial 时新修订号
-    # 仍大于旧草稿，宿主不会拒绝新输入。
+    # 修订号在客户端内单调递增，不因切换问题重置。
     draft_revision = draft_revision + 1
-    draft_promise_revision = draft_revision
-    draft_promise = state_request("/v1/draft", {projectId: project.id, questionId: draft_question,
-        revision: draft_revision, goal: draft_goal, deadline: draft_deadline, answer: draft_answer})
+    if !persist(app_state, current_draft(), false) { show_status("本地记录保存失败：" + storage_error) }
 }
 fn show_status(text) { status_text = text; ui.status_label.set_text(text); ui.status_label.set_visible(true) }
 fn refresh_actions() { ui.generate_action.render(); ui.revision_action.render() }
@@ -292,7 +299,7 @@ fn request_error(outcome) {
 }
 fn planning_failed(reason) {
     busy = false; app_state.activeJob = nil; app_state.phase = "failed"; app_state.error = reason
-    if commit_business() { show_status("本次规划已停止：" + reason) }
+    if save_business() { show_status("本次规划已停止：" + reason) }
     refresh()
 }
 fn poll_planning() {
@@ -326,7 +333,7 @@ fn poll_planning() {
                 message = result.payload.question
             } else { planning_failed(result.payload.reason); return }
             editing_goal = false
-            let saved = commit_business()
+            let saved = save_business()
             busy = false
             if saved { show_status(message) }
             refresh(); return
@@ -341,13 +348,13 @@ fn launch_request(request) {
     app_state.phase = if request.trigger == "compose" { "generating" } else { "revising" }
     app_state.error = ""; progress_text = if request.trigger == "compose" { "正在拆分目标" } else { "正在根据建议调整任务和时间" }
     editing_goal = false
-    if !commit_business() { busy = false; refresh(); return }
+    if !save_business() { busy = false; refresh(); return }
     show_status(progress_text); refresh()
     let outcome = request_api("/v1/agent/jobs", request).await()
     let error = request_error(outcome); if error != "" { planning_failed(error); return }
     let response = outcome.response.body.to_string().parse_json()
     app_state.activeJob = response.jobId
-    if !commit_business() { busy = false; refresh(); return }
+    if !save_business() { busy = false; refresh(); return }
     poll_planning()
 }
 fn generate_plan() {
@@ -363,26 +370,13 @@ fn revise_plan() {
     if busy { return }
     let advice = ui.advice_input.text().trim(); if advice == "" { return }
     if app_state.phase == "clarify" {
-        let attempt = 0
-        while attempt < 3 {
-            let answer = ui.advice_input.text().trim()
-            if answer == "" { show_status("请填写你的回答"); return }
-            draft_answer = answer
-            save_draft()
-            let revision = draft_promise_revision
-            let outcome = draft_promise.await()
-            let error = request_error(outcome)
-            if error != "" { show_status("回答草稿保存失败：" + error); return }
-            let body = outcome.response.body.to_string().parse_json()
-            if !body.applied or body.revision != revision {
-                show_status("回答草稿未保存到最新修订，请稍后重试"); return
-            }
-            # 等待保存期间用户可能继续输入；只有输入与刚保存的修订一致才提交。
-            if ui.advice_input.text().trim() != answer { attempt = attempt + 1; continue }
-            launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "",
-                resumeToken: app_state.resumeToken, clarificationAnswer: answer, now: current_iso()}); return
-        }
-        show_status("回答仍在变化，请停止输入后再次提交"); return
+        let answer = ui.advice_input.text().trim()
+        if answer == "" { show_status("请填写你的回答"); return }
+        draft_answer = answer
+        # 同步保存最新输入后再提交回答。
+        save_draft()
+        launch_request({snapshot: app_state.workingProject, trigger: "resume", instruction: "",
+            resumeToken: app_state.resumeToken, clarificationAnswer: answer, now: current_iso()}); return
     }
     let snapshot = if app_state.plan != nil { plan_project(app_state.draftProject, app_state.plan) } else { clone_value(project) }
     snapshot.version = project.version
@@ -403,36 +397,55 @@ fn edit_goal() {
 fn toggle_view() {
     app_state.showingFormal = !app_state.showingFormal; refresh()
 }
+fn latest_persisted_business() {
+    let record = read_record(saved_file)
+    if record == nil { return nil }
+    return record.business
+}
 fn verify_pending() {
     if busy or app_state.pendingVerification == nil { return }
     busy = true; app_state.phase = "verifying"
-    if !commit_business() { busy = false; refresh(); return }
+    if !save_business() { busy = false; refresh(); return }
     show_status("正在保存并核验完整日历"); refresh()
-    let pending = clone_value(app_state.pendingVerification)
+    # 待确认 target 写入文件后重新读取，核验使用这次回读的数据。
+    let readback = latest_persisted_business()
+    if readback == nil {
+        storage_error = "本地记录回读失败"
+        app_state.phase = "confirm_failed"; app_state.error = storage_error; busy = false
+        show_status("本地记录回读失败：" + storage_error); refresh(); return
+    }
+    let pending = clone_value(readback.pendingVerification)
     let outcome = request_api("/v1/calendar/verify", {beforeSnapshot: pending.before, draftProject: pending.draft,
         plan: pending.plan, readbackSnapshot: pending.target, now: current_iso()}).await()
     let error = request_error(outcome)
     if error != "" {
         app_state.phase = "confirm_failed"; app_state.error = error
-        let saved = commit_business(); busy = false
+        let saved = save_business(); busy = false
         if saved { show_status("确认核验失败：" + error) }
         refresh(); return
     }
     let receipt = outcome.response.body.to_string().parse_json()
     if receipt.status != "verified" {
         app_state.phase = "confirm_failed"; app_state.error = receipt.reason
-        let saved = commit_business(); busy = false
+        let saved = save_business(); busy = false
         if saved { show_status("计划尚未确认：" + receipt.reason) }
         refresh(); return
     }
-    project = clone_value(pending.target); app_state.project = project; app_state.receipt = receipt
-    app_state.savedAt = current_iso(); app_state.confirmedRationale = pending.plan.rationale
-    app_state.formalCapacity = clone_value(app_state.capacity)
-    app_state.confirmedRisks = pending.plan.risks; app_state.pendingVerification = nil
-    app_state.plan = nil; app_state.draftProject = nil; app_state.phase = "confirmed"; app_state.error = ""
-    app_state.showingFormal = false
-    let saved = commit_business(); busy = false
-    if saved { show_status("计划已确认，日历已保存并通过核验") }
+    # 正式项目、回执和清除候选作为一次保存；保存及回读成功后才更新正式项目。
+    let next_state = clone_value(app_state)
+    next_state.project = clone_value(pending.target); next_state.receipt = receipt
+    next_state.savedAt = current_iso(); next_state.confirmedRationale = pending.plan.rationale
+    next_state.formalCapacity = clone_value(next_state.capacity)
+    next_state.confirmedRisks = pending.plan.risks; next_state.pendingVerification = nil
+    next_state.plan = nil; next_state.draftProject = nil; next_state.phase = "confirmed"; next_state.error = ""
+    next_state.showingFormal = false
+    if !persist(next_state, current_draft(), true) {
+        app_state.phase = "confirm_failed"; app_state.error = storage_error; busy = false
+        show_status("正式计划保存失败：" + storage_error); refresh(); return
+    }
+    app_state = next_state
+    project = clone_value(app_state.project); displayed = project
+    busy = false; show_status("计划已确认，日历已保存并通过核验")
     refresh()
 }
 fn confirm_plan() {
@@ -440,46 +453,79 @@ fn confirm_plan() {
     assert(app_state.plan.baseVersion == project.version)
     app_state.pendingVerification = {before: clone_value(project), draft: clone_value(app_state.draftProject),
         plan: clone_value(app_state.plan), target: plan_project(app_state.draftProject, app_state.plan), now: current_iso()}
-    if !commit_business() { busy = false; refresh(); return }
     verify_pending()
+}
+fn load_persisted() {
+    let path_a = "state-a.json"; let path_b = "state-b.json"
+    let exists_a = fs.exists(path_a); let exists_b = fs.exists(path_b)
+    if !exists_a and !exists_b { return {mode: "fresh", record: nil, file: "", message: ""} }
+    let record_a = if exists_a { read_record(path_a) } else { nil }
+    let record_b = if exists_b { read_record(path_b) } else { nil }
+    let valid_a = record_a != nil; let valid_b = record_b != nil
+    if valid_a and valid_b {
+        if record_a.sequence == record_b.sequence {
+            return {mode: "stopped", record: nil, file: "", message: "本地记录序号重复，停止初始化并保留文件"}
+        }
+        if record_a.sequence > record_b.sequence {
+            return {mode: "recovered", record: record_a, file: path_a, message: ""}
+        }
+        return {mode: "recovered", record: record_b, file: path_b, message: ""}
+    }
+    if valid_a or valid_b {
+        let interrupted = (exists_a and !valid_a) or (exists_b and !valid_b)
+        let message = if interrupted { "检测到中断的保存，已恢复最近完整记录" } else { "" }
+        if valid_a { return {mode: "recovered", record: record_a, file: path_a, message: message} }
+        return {mode: "recovered", record: record_b, file: path_b, message: message}
+    }
+    return {mode: "stopped", record: nil, file: "", message: "本地记录全部无效，停止初始化并保留文件"}
 }
 fn boot() {
     let device = fs.read("device.json").parse_json()
-    let persisted = load_state()
-    if persisted == nil { return }
-    let business = persisted.business
-    if business == nil {
-        app_state = default_state()
-        business_version = 0
-        commit_business()
+    let recovered = load_persisted()
+    if recovered.mode == "stopped" {
+        # 记录全部无效时停止初始化，保留文件，只展示空白界面和明确提示。
+        storage_error = recovered.message
+        app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
+        if app_state.month == 0 { app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch() }
+        ui.timezone_label.set_text("设备时区 · " + app_state.timezone)
+        show_status(recovered.message)
+        refresh()
+        return
+    }
+    if recovered.mode == "recovered" {
+        app_state = clone_value(recovered.record.business)
+        business_version = recovered.record.businessVersion
+        saved_sequence = recovered.record.sequence; saved_file = recovered.file
     } else {
-        app_state = clone_value(business); business_version = persisted.version
-        if !has_field(app_state, "questionId") or app_state.questionId == "" {
-            app_state.questionId = "initial"; commit_business()
-        }
+        app_state = default_state(); business_version = 0; saved_sequence = 0; saved_file = ""
     }
     # 设备时区属于本机，恢复业务记录之后应用，不被旧记录覆盖。
     app_state.utcOffset = device.utcOffset; app_state.timezone = device.timezone
+    if !has_field(app_state, "questionId") or app_state.questionId == "" { app_state.questionId = "initial" }
     project = clone_value(app_state.project)
     draft_question = app_state.questionId
-    let draft = persisted.draft
-    # 修订号从高于任何旧草稿的基准继续；当前问题没有草稿时也如此，回到
-    # initial 时新输入就不会被早先更大的修订号拒绝。
-    draft_revision = 1000000
-    if draft != nil {
-        draft_revision = max(draft_revision, draft.revision)
-        draft_goal = draft.goal; draft_deadline = draft.deadline; draft_answer = draft.answer
-    } else {
-        draft_goal = if has_field(app_state, "inputGoal") { app_state.inputGoal } else { "" }
-        draft_deadline = if has_field(app_state, "inputDeadline") { app_state.inputDeadline } else { date_text(today_epoch() + 7 * 86400) }
-        draft_answer = if has_field(app_state, "inputAdvice") { app_state.inputAdvice } else { "" }
+    draft_revision = 0
+    draft_goal = ""
+    draft_deadline = date_text(today_epoch() + 7 * 86400)
+    draft_answer = ""
+    if recovered.mode == "recovered" {
+        let draft = recovered.record.draft
+        draft_revision = draft.revision
+        # 新问题只恢复该 questionId 的草稿。
+        if draft.questionId == app_state.questionId and draft.projectId == project.id {
+            draft_goal = draft.goal; draft_deadline = draft.deadline; draft_answer = draft.answer
+        }
     }
     if app_state.month == 0 { app_state.month = month_start(today_epoch()); app_state.selectedDay = today_epoch() }
     ui.goal_input.set_text(draft_goal); ui.deadline_input.set_text(draft_deadline)
     ui.advice_input.set_text(draft_answer)
     ui.timezone_label.set_text("设备时区 · " + app_state.timezone)
     loaded = true; editing_goal = project.goal == "" and app_state.draftProject == nil and app_state.lastRequest == nil
-    if app_state.pendingVerification != nil { app_state.phase = "confirm_failed"; show_status("候选计划已经保存，请重新确认核验") }
+    if recovered.mode == "fresh" {
+        if !save_business() { loaded = false; return }
+        show_status("已初始化本地记录")
+    } elif recovered.message != "" { show_status(recovered.message) }
+    elif app_state.pendingVerification != nil { app_state.phase = "confirm_failed"; show_status("候选计划已经保存，请重新确认核验") }
     elif app_state.plan != nil { show_status("已恢复候选计划与正式日历") }
     elif project.tasks.len() > 0 { show_status("已恢复本地日历") }
     refresh()

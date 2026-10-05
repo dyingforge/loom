@@ -2,7 +2,6 @@ import json
 import os
 import shutil
 import socket
-import sqlite3
 import subprocess
 import sys
 import time
@@ -15,8 +14,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / ".scratch/native/OctoSense-App-Hub/target/release/card-host"
 HUB = ROOT / ".scratch/native/OctoSense-App-Hub/target/release/hub"
-PROJECT_ID = "loom-calendar"
-TUNNEL = "https://quotes-geographical-per-foreign.trycloudflare.com"
+STATE_FILES = ("state-a.json", "state-b.json")
 COMPOSE_GOAL = ("我要准备一场产品功能演示，内容包括新增记录、列表和本地保存，每项约半小时。"
                 "演示日期还没定，可能是本周五或下周一，请先确认日期再安排。")
 
@@ -85,9 +83,7 @@ class ClientStateCheck:
         (self.run_dir / "tmp").mkdir()
         self.app_data = self.run_dir / "app-data"
         self.bundle = self.run_dir / "bundle"
-        self.server_port = free_port()
         self.remote_port = free_port()
-        self.server = None
         self.client_process = None
         self.remote = None
         self.results = {}
@@ -95,37 +91,11 @@ class ClientStateCheck:
     def build_native(self):
         subprocess.run([sys.executable, str(ROOT / "scripts/build_native.py")], check=True)
 
-    def start_server(self):
-        log = (self.run_dir / "server.log").open("w")
-        env = dict(os.environ, PORT=str(self.server_port), TMPDIR=str(self.run_dir / "tmp"))
-        self.server = subprocess.Popen([sys.executable, str(ROOT / "scripts/run_dev_server.py")],
-                                       cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
-        until = time.monotonic() + 60
-        while time.monotonic() < until:
-            if self.server.poll() is not None:
-                raise SystemExit((self.run_dir / "server.log").read_text())
-            with socket.socket() as probe:
-                ready = probe.connect_ex(("127.0.0.1", self.server_port)) == 0
-            if ready:
-                response = httpx.get(f"http://127.0.0.1:{self.server_port}/healthz", timeout=2)
-                if response.status_code == 200:
-                    return
-            time.sleep(0.3)
-        raise AssertionError("服务端启动超时")
-
     def prepare_bundle(self):
+        # 复制真实应用包并加盖官方摘要，不改写 main.splash，也不改主机清单。
         shutil.copytree(ROOT / "bundle", self.bundle)
-        splash = (self.bundle / "main.splash").read_text()
-        replaced = splash.replace(f'let api_origin = "{TUNNEL}"',
-                                  f'let api_origin = "http://127.0.0.1:{self.server_port}"')
-        assert replaced != splash, "没有找到 api_origin"
-        (self.bundle / "main.splash").write_text(replaced)
-        # The manifest names bare hosts without ports; the loopback server is
-        # reached by host, and its port lives only in the lowered origin.
         manifest = json.loads((self.bundle / "manifest.json").read_text())
-        manifest["network"]["hosts"] = ["127.0.0.1"]
         self.app_id = manifest["id"]
-        (self.bundle / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
         subprocess.run([str(HUB), "stamp", str(self.bundle)], check=True)
 
     def start_client(self):
@@ -155,7 +125,7 @@ class ClientStateCheck:
                 ready = probe.connect_ex(("127.0.0.1", self.remote_port)) == 0
             if ready:
                 response = httpx.get(f"http://127.0.0.1:{self.remote_port}/snap", timeout=10)
-                if response.status_code == 200 and any(item["i"] == "month_label" for item in response.json()["s"]):
+                if response.status_code == 200 and any(item["i"] == "timezone_label" for item in response.json()["s"]):
                     self.remote = Remote(self.remote_port)
                     return
             time.sleep(0.3)
@@ -177,36 +147,35 @@ class ClientStateCheck:
 
     def stop(self):
         self.stop_client()
-        if self.server is not None and self.server.poll() is None:
-            self.server.terminate()
-            until = time.monotonic() + 20
-            while self.server.poll() is None and time.monotonic() < until:
-                time.sleep(0.2)
-            if self.server.poll() is None:
-                self.server.kill()
-                self.server.wait()
 
-    def database(self):
-        return self.app_data / self.app_id / "state.sqlite3"
+    def state_records(self):
+        records = []
+        for name in STATE_FILES:
+            path = self.app_data / self.app_id / name
+            if path.exists():
+                records.append(json.loads(path.read_text()))
+        return records
+
+    def latest_record(self):
+        records = self.state_records()
+        if not records:
+            return None
+        return max(records, key=lambda record: record["sequence"])
 
     def read_business(self):
-        if not self.database().exists():
+        record = self.latest_record()
+        if record is None:
             return None, None
-        connection = sqlite3.connect(f"file:{self.database()}?mode=ro", uri=True, timeout=10)
-        row = connection.execute("SELECT version, business FROM business WHERE project_id = ?",
-                                 (PROJECT_ID,)).fetchone()
-        connection.close()
-        return (None, None) if row is None else (row[0], json.loads(row[1]))
+        return record["businessVersion"], record["business"]
 
     def read_draft(self, question_id):
-        if not self.database().exists():
+        record = self.latest_record()
+        if record is None:
             return None
-        connection = sqlite3.connect(f"file:{self.database()}?mode=ro", uri=True, timeout=10)
-        row = connection.execute(
-            "SELECT revision, goal, deadline, answer FROM draft WHERE project_id = ? AND question_id = ?",
-            (PROJECT_ID, question_id)).fetchone()
-        connection.close()
-        return None if row is None else {"revision": row[0], "goal": row[1], "deadline": row[2], "answer": row[3]}
+        draft = record["draft"]
+        if draft["questionId"] != question_id:
+            return None
+        return draft
 
     def wait_draft(self, question_id, expect, timeout=60):
         until = time.monotonic() + timeout
@@ -228,7 +197,6 @@ class ClientStateCheck:
 
     def run(self):
         self.build_native()
-        self.start_server()
         self.prepare_bundle()
         self.start_client()
 
