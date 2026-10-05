@@ -5,7 +5,6 @@ import os
 import socket
 import subprocess
 import time
-from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -60,15 +59,8 @@ if __name__ == "__main__":
     with socket.socket() as probe:
         if probe.connect_ex(("127.0.0.1", args.port)) == 0:
             raise SystemExit("客户端已经运行，请关闭当前窗口后重新启动")
-    manifest = json.loads((ROOT / "bundle/manifest.json").read_text())
     state_directory = args.state.resolve()
-    device_directory = state_directory / manifest["id"]
-    device_directory.mkdir(parents=True, exist_ok=True)
-    local = datetime.now().astimezone()
-    timezone_name = Path("/etc/localtime").resolve().as_posix().split("zoneinfo/")[-1]
-    (device_directory / "device.json").write_text(json.dumps({
-        "utcOffset": local.utcoffset().total_seconds() / 3600, "timezone": timezone_name,
-    }))
+    state_directory.mkdir(parents=True, exist_ok=True)
     temporary = ROOT / ".scratch/native-temp"
     temporary.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, TMPDIR=str(temporary), MAKEPAD_REMOTE=str(args.port))

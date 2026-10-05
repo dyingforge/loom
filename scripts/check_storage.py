@@ -6,7 +6,7 @@ import socket
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -135,16 +135,24 @@ class StorageCheck:
                 return value.get("t", "")
         return None
 
+    def timezone_text(self):
+        for value in self.remote.snapshot():
+            if value.get("i") == "timezone_label":
+                return value.get("t", "")
+        return None
+
+    def prefix_text(self, prefix):
+        for value in self.remote.snapshot():
+            text = value.get("t", "")
+            if text.startswith(prefix):
+                return text
+        return None
+
     def start_client(self):
         sys.path.insert(0, str(ROOT / "scripts"))
         import run_client
         run_client.check_native_build(self.host)
-        device_dir = self.jail()
-        device_dir.mkdir(parents=True, exist_ok=True)
-        local = datetime.now().astimezone()
-        timezone_name = Path("/etc/localtime").resolve().as_posix().split("zoneinfo/")[-1]
-        (device_dir / "device.json").write_text(json.dumps(
-            {"utcOffset": local.utcoffset().total_seconds() / 3600, "timezone": timezone_name}))
+        self.app_data.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, TMPDIR=str(self.run_dir / "tmp"),
                    MAKEPAD_REMOTE=str(self.remote_port), MAKEPAD_HIDE_WINDOWS="1")
         log = (self.run_dir / "card-host.log").open("a")
@@ -207,7 +215,19 @@ class StorageCheck:
         self.results["初始化"] = {"文件": name, "sequence": initial["sequence"],
                                 "businessVersion": initial["businessVersion"]}
 
-        deadline = (datetime.now().astimezone() + timedelta(days=30)).date().isoformat()
+        # 首次启动：不创建 device.json，界面显示东八区当前日期与七天后的初始截止日期。
+        today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+        timezone_label = self.wait_for("东八区标签", self.timezone_text, 30)
+        assert timezone_label == "东八区 · UTC+8", timezone_label
+        today_text = self.wait_for("今天日期", lambda: self.prefix_text("今天 · "), 30)
+        assert today_text == "今天 · " + today.isoformat(), (today_text, today.isoformat())
+        initial_deadline = (today + timedelta(days=7)).isoformat()
+        self.wait_for_value("deadline_input", initial_deadline)
+        assert not (self.jail() / "device.json").exists()
+        self.results["东八区"] = {"界面时区": timezone_label, "界面今天": today_text,
+                                "初始截止日期": self.remote.value("deadline_input"), "device.json": False}
+
+        deadline = (datetime.now(timezone.utc) + timedelta(hours=8, days=30)).date().isoformat()
         goals = ["产品功能演示准备", "准备产品功能演示", "准备产品功能演示和讲解"]
         revisions = []
         for goal in goals:
@@ -288,6 +308,7 @@ class StorageCheck:
         self.results["全部无效停止"] = {"文件": sorted(truncated_all), "界面目标": self.remote.value("goal_input"),
                                      "界面提示": status}
         assert "无效" in status, status
+        assert not (self.jail() / "device.json").exists()
 
         (self.run_dir / "results.json").write_text(json.dumps(self.results, ensure_ascii=False, indent=2))
         print(json.dumps(self.results, ensure_ascii=False, indent=2))

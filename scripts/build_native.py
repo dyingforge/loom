@@ -1,11 +1,11 @@
-# 按 native/LOCK.json 准备并构建 Loom 原生宿主。
+# 按 native/LOCK.json 准备并构建 Loom 使用的官方原生宿主。
 #
-# 四个原生依赖固定在 native/LOCK.json。其中两个带 Loom 修复的仓库，其提交保存为
-# native/bundles 下的 Git 提交包，含固定上游基线的干净仓库可以用 Git 验证并取回，
-# 不需要重新应用补丁。本脚本只使用标准库与 git、cargo 命令：验证锁定记录、提交包
-# 与现有检出的提交、干净状态和 origin，在 .scratch/native 中检出固定源码，从提交包
-# 取回精确修复提交，然后执行 cargo build --release --locked 构建 hub 与 card-host，
-# 并在二进制旁写入构建标记。不使用 sed、替换命令或 git apply 改写依赖源码。
+# 四个原生依赖固定在 native/LOCK.json：OctoSense-App-Hub 及其 Cargo.toml 引用的
+# makepad、Octoscript-Makepad 与 Octoscript。脚本只使用标准库与 git、cargo 命令：
+# 验证锁定记录、现有检出的提交、干净状态和 origin，在 .scratch/native 中检出固定
+# 源码，然后执行 cargo build --release --locked 构建 hub 与 card-host，并在二进制
+# 旁写入构建标记。锁定记录中可选的 Git 提交包会先经 Git 验证再取回；当前官方
+# 锁定记录不含提交包。不使用 sed、替换命令或 git apply 改写依赖源码。
 
 import argparse
 import hashlib

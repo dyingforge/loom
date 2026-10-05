@@ -10,54 +10,32 @@
   },
   "repositories": [
     {
+      "name": "OctoSense-App-Hub",
+      "url": "https://github.com/OctoSense-org/OctoSense-App-Hub.git",
+      "checkout": ".scratch/native/OctoSense-App-Hub",
+      "upstream": "0d5b47a2ae9eb98020feca26b7c895a3cf797dc1",
+      "fix": "0d5b47a2ae9eb98020feca26b7c895a3cf797dc1"
+    },
+    {
       "name": "makepad",
       "url": "https://github.com/OctoSense-org/makepad.git",
       "checkout": ".scratch/native/makepad",
       "upstream": "c155f61d0e1600d2ec474209374444a38a09a470",
-      "fix": "08f0e08aa7873b7ce1a633f86185a52be63a017d",
-      "bundle": "native/bundles/makepad.bundle",
-      "bundle_ref": "refs/loom-bundle/makepad",
-      "bundle_sha256": "a006202eda0f511abbac3b9c067a2f4eb5c5e8cd927212b39b92af7812ae239e",
-      "patches": [
-        "native/patches/makepad-memory.patch",
-        "native/patches/makepad-terminate.patch",
-        "native/patches/makepad-telemetry.patch"
-      ]
-    },
-    {
-      "name": "OctoSense-App-Hub",
-      "url": "https://github.com/OctoSense-org/OctoSense-App-Hub.git",
-      "checkout": ".scratch/native/OctoSense-App-Hub",
-      "upstream": "e014fa9c596cdbd95de5cf9fb2a6b4fc2b781d17",
-      "fix": "3599b69909898a76cbc454077ef552dc543ddeb4",
-      "bundle": "native/bundles/app-hub.bundle",
-      "bundle_ref": "refs/loom-bundle/app-hub",
-      "bundle_sha256": "e0f2476a857030f526f75f504dfc283553e4901e80df3e2dda55b67de9a559b9",
-      "patches": [
-        "native/patches/app-hub-state.patch"
-      ]
+      "fix": "c155f61d0e1600d2ec474209374444a38a09a470"
     },
     {
       "name": "Octoscript-Makepad",
       "url": "https://github.com/OctoSense-org/Octoscript-Makepad.git",
       "checkout": ".scratch/native/octoscript-makepad",
       "upstream": "2cc5ef37d7d6a3d2992673389ce74488f7bb2d87",
-      "fix": "2cc5ef37d7d6a3d2992673389ce74488f7bb2d87",
-      "bundle": null,
-      "bundle_ref": null,
-      "bundle_sha256": null,
-      "patches": []
+      "fix": "2cc5ef37d7d6a3d2992673389ce74488f7bb2d87"
     },
     {
       "name": "Octoscript",
       "url": "https://github.com/OctoSense-org/Octoscript.git",
       "checkout": ".scratch/native/octoscript",
       "upstream": "5991dfae9344589e732b2605b530f788e8bbcd11",
-      "fix": "5991dfae9344589e732b2605b530f788e8bbcd11",
-      "bundle": null,
-      "bundle_ref": null,
-      "bundle_sha256": null,
-      "patches": []
+      "fix": "5991dfae9344589e732b2605b530f788e8bbcd11"
     }
   ]
 }
