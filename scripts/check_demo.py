@@ -261,7 +261,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--remote", default="http://127.0.0.1:8144")
     parser.add_argument("--state", type=Path, default=Path(".scratch/calendar-demo"))
-    parser.add_argument("--output", type=Path, default=Path("docs/evidence/calendar-demo.json"))
+    parser.add_argument("--output", type=Path, default=Path(".scratch/calendar-demo.json"))
     parser.add_argument("--phase", choices=["run", "restore-candidate", "restore", "verify-failure", "retry-confirm"], default="run")
     args = parser.parse_args()
     check = DemoCheck(args.remote, args.state, args.output)

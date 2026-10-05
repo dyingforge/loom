@@ -22,14 +22,17 @@ python3 scripts/build_native.py --verify   # 只验证锁定记录与现有源�
 
 新设备先按官方 OctoScript-App-Design-Flow 的 `docs/QUICKSTART.md` 准备 Rust 与系统依赖，然后运行 `python3 scripts/build_native.py`。本机的默认客户端路径为 `.scratch/native/OctoSense-App-Hub/target/release/card-host`，使用 `python3 scripts/run_client.py` 启动；`run_client.py` 会拒绝未按锁定来源构建的宿主。
 
-在项目根目录的 `.env` 中填写 `MINIMAX_API_KEY`，参考 `.env.example`。启动服务：
+提交服务使用环境文件中的 MiniMax 凭据，由服务端通过 `LOOM_ENV_FILE` 加载。启动本机单个 Uvicorn 进程：
 
 ```sh
 python3 -m pip install -r requirements.txt
-python3 scripts/run_dev_server.py
+LOOM_ENV_FILE=/path/to/.env PORT=8010 LOOM_USAGE_DB=$PWD/.scratch/service/loom.sqlite3 \
+LOOM_DAILY_COST_LIMIT_CENTS=1000 LOOM_RATE_LIMIT=60 python3 scripts/run_dev_server.py
 ```
 
-客户端通过 `https://native-nsw-dried-blocking.trycloudflare.com` 访问本机服务。保持服务和当前 Cloudflare 隧道运行。需要重新创建开发隧道时运行：
+当前提交实例使用 `PORT=8010`、`LOOM_USAGE_DB=.scratch/service/loom.sqlite3`、每日公共额度 1000 美分、每 IP 每分钟 60 次，凭据来自 `LOOM_ENV_FILE` 指定的环境文件。
+
+客户端通过 `https://tariff-boards-bradley-theory.trycloudflare.com` 访问本机服务。保持服务和当前 Cloudflare 隧道运行。需要重新创建开发隧道时运行：
 
 ```sh
 .scratch/native/cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate --protocol http2

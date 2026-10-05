@@ -1,6 +1,6 @@
 # Loom AppHub 提交审核回答
 
-应用：`loom.pm-calendar` 版本 `0.1.0`。发布者 `dyingforge`，平台仅 macOS，类别 productivity，能力 `storage` 与 `net`，存储额度 4 MiB，`agent` 为 `null`。当前客户端通过 Cloudflare 临时隧道 `https://native-nsw-dried-blocking.trycloudflare.com` 访问本机 Python 服务；这是临时地址，正式提交前会替换为持续运行的 HTTPS 地址。
+应用：`loom.pm-calendar` 版本 `0.1.0`。发布者 `dyingforge`，平台仅 macOS，类别 productivity，能力 `storage` 与 `net`，存储额度 4 MiB，`agent` 为 `null`。当前客户端通过 Cloudflare 临时隧道 `https://tariff-boards-bradley-theory.trycloudflare.com` 访问本机 Python 服务；隧道需要保持运行。
 
 以下回答针对 `bundle/` 中 `0.1.0` 的真实内容与真实验收状态。提交 commit SHA、标签和 Issue 地址在最终提交时确定后填写。
 
@@ -26,7 +26,7 @@
 一致，没有多余授权。
 
 - `storage`：客户端使用官方 `fs` 在应用目录交替写入 `state-a.json` 与 `state-b.json` 两份完整快照，保存草稿、候选、正式项目、回执与恢复状态。
-- `net`：客户端只请求 `network.hosts` 中声明的 `native-nsw-dried-blocking.trycloudflare.com`，用于 Python 服务的 `/v1/agent/jobs`、`/v1/agent/jobs/{id}` 与 `/v1/calendar/verify`。该服务再调用 MiniMax 完成规划。应用包不携带模型密钥。
+- `net`：客户端只请求 `network.hosts` 中声明的 `tariff-boards-bradley-theory.trycloudflare.com`，用于 Python 服务的 `/v1/agent/jobs`、`/v1/agent/jobs/{id}` 与 `/v1/calendar/verify`。该服务再调用 MiniMax 完成规划。应用包不携带模型密钥。
 - 没有授予相机、麦克风、位置、通讯录等与界面无关的能力；`agent` 为 `null`。
 
 ## 4. 界面是否有欺骗性内容

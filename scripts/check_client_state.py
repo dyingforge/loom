@@ -280,8 +280,9 @@ class ClientStateCheck:
         if record is None:
             return None
         phase = record.get("phase")
-        if phase in ("candidate", "failed", "confirmed"):
-            return phase
+        assert phase != "failed", record
+        if phase == "candidate":
+            return "candidate"
         if phase == "clarify" and record.get("questionId") != question_id:
             return "clarify"
         return None

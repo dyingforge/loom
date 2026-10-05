@@ -8,10 +8,10 @@ Loom 是使用 OctoScript 原生客户端、Python 服务和 MiniMax 的目标�
 
 ```sh
 python3 -m pip install -r requirements.txt
-python3 scripts/run_dev_server.py
+LOOM_ENV_FILE=/path/to/.env python3 scripts/run_dev_server.py
 ```
 
-启动前在项目根目录创建 `.env`，参考 `.env.example`，填写 `MINIMAX_API_KEY`。密钥仅由服务端读取。服务监听 `127.0.0.1:8000`，缺少密钥时启动失败。
+`LOOM_ENV_FILE` 指向服务端读取的环境文件，其中保存 `MINIMAX_API_KEY`；密钥仅由服务端读取。服务默认监听 `127.0.0.1:8000`，可用 `PORT` 调整；缺少密钥时启动失败。
 
 ## 构建并启动客户端
 

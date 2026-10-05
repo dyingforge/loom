@@ -157,6 +157,46 @@ def demo_step(run_dir, service):
     return {"step": "真实客户端状态与日历", "evidence": str(output)}
 
 
+def resilience_step(run_dir):
+    log_path = run_dir / "demo-data" / "card-host.log"
+    log_text = log_path.read_text()
+    jail = [line for line in log_text.splitlines() if "isolate jailed" in line]
+    assert jail, f"缺少隔离预算日志：{log_path}"
+    assert "heap allocation limit exceeded" not in log_text, "出现堆上限错误"
+    sizes = {path.name: path.stat().st_size
+             for path in (run_dir / "demo-data" / "loom.pm-calendar").glob("state-?.json")}
+    phases = [item["phase"] for item in json.loads((run_dir / "demo.json").read_text()) if "phase" in item]
+    return {"step": "官方宿主隔离预算与连续操作", "isolate": jail[-1].split(" - ")[-1],
+            "snapshotBytes": sizes, "phases": phases}
+
+
+def protection_step(service):
+    block = {"id": "b1", "taskId": "t1", "start": "2026-09-01T09:00:00",
+             "end": "2026-09-01T10:00:00", "done": True}
+    moved = {"id": "b1", "taskId": "t1", "start": "2026-10-08T09:00:00",
+             "end": "2026-10-08T10:00:00", "done": True}
+    task = {"id": "t1", "title": "已完成任务", "priority": 1, "remainingHours": 0,
+            "done": True, "dependsOn": [], "adjustable": True, "blocks": [block]}
+    project = {"id": "loom-calendar", "version": 3, "goal": "保护已完成记录", "deadline": None,
+               "milestones": [], "tasks": [task], "fixedEvents": [],
+               "workHours": {"start": "09:00", "end": "18:00"}, "restDays": [5, 6],
+               "preferences": "", "autoAdjust": False}
+    draft = json.loads(json.dumps(project))
+    draft["tasks"][0]["blocks"] = [moved]
+    readback = json.loads(json.dumps(draft))
+    readback["version"] = 4
+    plan = {"planId": "protection", "baseVersion": 3,
+            "changes": [{"blockId": "b1", "before": block, "after": moved}]}
+    request = {"beforeSnapshot": project, "draftProject": draft, "plan": plan,
+               "readbackSnapshot": readback, "now": "2026-10-05T12:00:00"}
+    response = httpx.post(f"http://127.0.0.1:{service.port}/v1/calendar/verify", json=request, timeout=30)
+    response.raise_for_status()
+    receipt = response.json()
+    assert receipt["status"] == "not_verified", receipt
+    assert "已经" in receipt["reason"], receipt
+    return {"step": "已开始或完成记录保护", "status": receipt["status"], "reason": receipt["reason"]}
+
+
 def state_step(run_dir):
     log = run("client-state", [sys.executable, "scripts/check_client_state.py"], run_dir)
     return {"step": "真实客户端草稿与追问", "log": str(log)}
@@ -190,6 +230,8 @@ def main():
     service = Service(run_dir)
     service.ensure()
     results.append(demo_step(run_dir, service))
+    results.append(resilience_step(run_dir))
+    results.append(protection_step(service))
     results.append(state_step(run_dir))
     results.append(service_step(run_dir))
     results.append(hub_step(run_dir))

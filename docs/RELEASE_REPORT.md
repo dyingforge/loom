@@ -24,4 +24,4 @@
 
 启动步骤见 `docs/DEMO.md`。开发 HTTPS 地址要求本机服务和隧道持续运行。重新创建隧道后，需要同步客户端地址、主机清单和隐私说明链接。
 
-交付使用按官方 `native/LOCK.json` 提交构建的本地 card-host。正式发布需要持续运行的公网服务、发布资料、真实截图和应用包检查。首次提交允许未签名，已有签名发布记录的后续提交需要使用登记密钥。具体资料见 [正式提交所需资料](OPEN_QUESTIONS.md) 和 [AppHub 发布准备](APPHUB_PUBLISHING.md)。
+交付使用按官方 `native/LOCK.json` 提交构建的本地 card-host。提交使用本机服务与 Cloudflare 临时 HTTPS 隧道，需要保持服务与隧道运行；提交资料包括真实截图与应用包检查。首次提交允许未签名，已有签名发布记录的后续提交需要使用登记密钥。具体资料见 [正式提交所需资料](OPEN_QUESTIONS.md) 和 [AppHub 发布准备](APPHUB_PUBLISHING.md)。
