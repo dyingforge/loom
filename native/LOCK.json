@@ -13,8 +13,8 @@
       "name": "OctoSense-App-Hub",
       "url": "https://github.com/OctoSense-org/OctoSense-App-Hub.git",
       "checkout": ".scratch/native/OctoSense-App-Hub",
-      "upstream": "0d5b47a2ae9eb98020feca26b7c895a3cf797dc1",
-      "fix": "0d5b47a2ae9eb98020feca26b7c895a3cf797dc1"
+      "upstream": "78dfda5f33638e1869c36bceef5713342aae861c",
+      "fix": "78dfda5f33638e1869c36bceef5713342aae861c"
     },
     {
       "name": "makepad",
@@ -34,8 +34,8 @@
       "name": "Octoscript",
       "url": "https://github.com/OctoSense-org/Octoscript.git",
       "checkout": ".scratch/native/octoscript",
-      "upstream": "5991dfae9344589e732b2605b530f788e8bbcd11",
-      "fix": "5991dfae9344589e732b2605b530f788e8bbcd11"
+      "upstream": "f67cb843dddb045a75a13b7d166994fc13acd17c",
+      "fix": "f67cb843dddb045a75a13b7d166994fc13acd17c"
     }
   ]
 }

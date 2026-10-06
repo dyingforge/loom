@@ -6,10 +6,10 @@
 
 | 组件 | 固定提交 |
 | --- | --- |
-| OctoSense-App-Hub | `0d5b47a2ae9eb98020feca26b7c895a3cf797dc1` |
+| OctoSense-App-Hub | `78dfda5f33638e1869c36bceef5713342aae861c` |
 | Makepad | `c155f61d0e1600d2ec474209374444a38a09a470` |
 | octoscript-makepad | `2cc5ef37d7d6a3d2992673389ce74488f7bb2d87` |
-| octoscript | `5991dfae9344589e732b2605b530f788e8bbcd11` |
+| octoscript | `f67cb843dddb045a75a13b7d166994fc13acd17c` |
 
 `native/LOCK.json` 记录 OctoSense-App-Hub 及其 `Cargo.toml` 引用的 Makepad、octoscript-makepad 与 octoscript 四个官方仓库的地址、提交与构建命令。按固定来源准备并构建原生宿主：
 
