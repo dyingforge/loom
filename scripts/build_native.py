@@ -211,19 +211,21 @@ def app_hub_entry(lock):
     raise SystemExit("锁定记录没有 OctoSense-App-Hub")
 
 
-def build(lock):
+def build(lock, hub_only):
     entry = app_hub_entry(lock)
     repo = checkout_path(entry)
     packages = []
-    for name in ("octosense-card-host", "octosense-app-hub"):
+    names = ("octosense-app-hub",) if hub_only else ("octosense-card-host", "octosense-app-hub")
+    for name in names:
         packages.extend(["-p", name])
     streamed(["cargo", "build", "--release", "--locked", *packages], cwd=repo)
-    binary = repo / "target" / "release" / "card-host"
+    binary_name = "hub" if hub_only else "card-host"
+    binary = repo / "target" / "release" / binary_name
     if not binary.is_file():
         raise SystemExit("构建后没有找到 {}".format(binary))
     stamp = {
         "lock_sha256": sha256_file(LOCK_PATH),
-        "card_host_sha256": sha256_file(binary),
+        binary_name.replace("-", "_") + "_sha256": sha256_file(binary),
         "repositories": {item["name"]: item["fix"] for item in lock["repositories"]},
     }
     (binary.parent / STAMP_NAME).write_text(json.dumps(stamp, indent=2, sort_keys=True) + "\n")
@@ -236,6 +238,11 @@ def main():
         "--verify",
         action="store_true",
         help="只验证锁定记录、提交包和现有源码，不构建",
+    )
+    parser.add_argument(
+        "--hub-only",
+        action="store_true",
+        help="只构建 hub 命令行工具，不构建 card-host 图形宿主（供无系统图形依赖的构建环境使用）",
     )
     args = parser.parse_args()
     TEMP.mkdir(parents=True, exist_ok=True)
@@ -253,7 +260,7 @@ def main():
         ensure_checkout(entry)
         verify_bundle(entry)
         verify_checkout(entry)
-    build(lock)
+    build(lock, args.hub_only)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build the locked hub tool
-        run: python3 scripts/build_native.py
+        run: python3 scripts/build_native.py --hub-only
 
       - name: Prepare the canonical release subject
         run: |
