@@ -1,0 +1,82 @@
+name: publish-app
+
+# 推送 v<manifest.version> 标签时封存并发布应用包（publisher-github-v1）。
+#
+# 流程：publisher-prepare → actions/attest → publisher-attach →
+# publisher-verify → publisher-pack → Release。工作流不使用发布者密钥，
+# 也不使用仓库 Secret；Sigstore 证明由 GitHub 托管运行器签发。
+#
+# 自建复现：本地先跑 scripts/build_native.py 构建锁定宿主，再对 bundle 副本
+# 执行 hub publisher-prepare / publisher-attach / publisher-verify /
+# publisher-pack（见 docs/PROTOCOL.md）。attest 与 attach 只能在
+# GitHub Actions 中取得有效 Sigstore 证明。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: publish-app
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build the locked hub tool
+        run: python3 scripts/build_native.py
+
+      - name: Prepare the canonical release subject
+        run: |
+          mkdir -p build
+          .scratch/native/OctoSense-App-Hub/target/release/hub publisher-prepare bundle \
+            --repository "${{ github.repository }}" \
+            --repository-id "${{ github.repository_id }}" \
+            --owner-id "${{ github.repository_owner_id }}" \
+            --workflow .github/workflows/publish-app.yml \
+            --tag "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --out build/octosense-app-manifest.json
+
+      - name: GitHub signs the canonical subject
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: build/octosense-app-manifest.json
+
+      - name: Attach the proof to the bundle
+        run: |
+          .scratch/native/OctoSense-App-Hub/target/release/hub publisher-attach bundle \
+            --attestation "${{ steps.attest.outputs.bundle-path }}"
+
+      - name: Verify the release
+        run: .scratch/native/OctoSense-App-Hub/target/release/hub publisher-verify bundle
+
+      - name: Pack the bundle
+        run: |
+          .scratch/native/OctoSense-App-Hub/target/release/hub publisher-pack bundle \
+            --out build/app.bundle.pack.json
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" build/app.bundle.pack.json \
+            --verify-tag --generate-notes

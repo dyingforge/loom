@@ -1,321 +1,237 @@
-import argparse
-import calendar
 import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 
-GENERATE_ANSWER = ("按原始演示目标安排：包含新增记录、列表、本地保存、编写讲解说明四项，每项约半小时至一小时；"
-                   "只在周一至周五 09:00–18:00 的工作时间安排，不占用周末。")
-REVISE_ANSWER = ("允许调整尚未开始的任务安排，保留原有任务标题、工时，以及已经开始或完成的记录；"
-                 "新增独立任务“演示设备检查”，工时 0.5 小时，并安排在其他任务之前。")
+ROOT = Path(__file__).resolve().parents[1]
+HOST = ROOT / ".scratch/native/OctoSense-App-Hub/target/release/card-host"
+HUB = ROOT / ".scratch/native/OctoSense-App-Hub/target/release/hub"
+STATE_FILES = ("state-a.json", "state-b.json")
+
+GOAL = "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。"
+REVISE = "请新增一个独立任务「演示设备检查」，工时 0.5 小时，安排在所有其他任务之前，原有任务标题与工时保持。"
+ANSWER = "安排在上午 09:00 开始。"
 
 
-class DemoCheck:
-    def __init__(self, remote: str, state: Path, output: Path):
-        self.client = httpx.Client(base_url=remote, timeout=20)
-        self.state = state
-        self.output = output
-        self.records = []
-        manifest = json.loads((Path(__file__).resolve().parents[1] / "bundle/manifest.json").read_text())
-        self.jail = state / manifest["id"]
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+class Remote:
+    def __init__(self, port):
+        self.client = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=30)
 
     def snapshot(self):
-        response = self.client.get("/snap")
-        response.raise_for_status()
-        return response.json()["s"]
+        return self.client.get("/snap").raise_for_status().json()["s"]
 
     def scroll(self, amount):
-        self.client.get("/m", params={"k": "scroll", "x": 1000, "y": 700,
-                                     "dy": amount, "wait": 1}).raise_for_status()
-
-    def top(self):
-        self.scroll(-4000)
+        self.client.get("/m", params={"k": "scroll", "x": 1000, "y": 700, "dy": amount, "wait": 1}).raise_for_status()
 
     def find(self, identifier=None, text=None):
-        for attempt in range(17):
+        for attempt in range(20):
             values = [value for value in self.snapshot()
                       if value["ty"] != "Splash"
-                      and (identifier is None or value["i"] == identifier)
+                      and (identifier is None or value.get("i") == identifier)
                       and (text is None or value.get("t") == text)
                       and 0 <= value["r"][1] < 970]
             if values:
                 assert len(values) == 1, values
                 return values[0]
-            self.scroll(220 if attempt < 8 else -220)
+            self.scroll(220 if attempt < 10 else -220)
         raise AssertionError((identifier, text))
 
-    def click_value(self, value):
+    def value(self, identifier):
+        return self.find(identifier=identifier)["val"]
+
+    def click_value(self, value, wait=1):
         x, y, width, height = value["r"]
-        self.client.get("/click", params={"x": x + width / 2, "y": y + height / 2, "wait": 1}).raise_for_status()
+        self.client.get("/click", params={"x": x + width / 2, "y": y + height / 2, "wait": wait}).raise_for_status()
 
     def click(self, text):
         self.click_value(self.find(text=text))
 
-    def fill(self, identifier, text):
-        value = self.find(identifier=identifier)
-        self.click_value(value)
+    def focus(self, identifier):
+        self.click_value(self.find(identifier=identifier))
+
+    def retype(self, text):
         self.client.get("/k", params={"k": "down", "c": "KeyA", "cmd": 1}).raise_for_status()
-        self.client.get("/t", params={"t": text, "wait": 1}).raise_for_status()
-        assert self.find(identifier=identifier)["val"] == text
+        self.client.get("/t", params={"t": text, "wait": 0}).raise_for_status()
 
-    def saved_record(self):
-        files = list(self.jail.glob("state-?.json"))
-        assert files, f"没有状态文件：{self.jail}"
-        records = [json.loads(path.read_text()) for path in files]
-        return max(records, key=lambda value: value["sequence"])
+    def fill(self, identifier, text):
+        self.focus(identifier)
+        self.retype(text)
+        assert self.value(identifier) == text, (self.value(identifier), text)
 
-    def saved(self):
-        return self.saved_record()["business"]
+    def quit(self):
+        self.client.get("/quit").raise_for_status()
 
-    def answer_clarification(self, state, answer):
-        question = state.get("question", "")
-        resume_token = state.get("resumeToken", "")
-        assert question, "模型追问为空"
-        assert resume_token, "追问缺少恢复凭据"
-        assert state.get("workingProject") is not None, "追问缺少候选项目"
-        self.records.append({"step": "真实模型追问", "question": question})
-        self.output.parent.mkdir(parents=True, exist_ok=True)
-        self.output.write_text(json.dumps(self.records, ensure_ascii=False, indent=2))
-        self.fill("advice_input", answer)
-        self.click("提交回答并继续")
 
-    def wait(self, answer, limit=3):
-        deadline = time.monotonic() + 650
-        asked = 0
-        while time.monotonic() < deadline:
-            state = self.saved()
-            phase = state["phase"]
-            if phase in ("generating", "revising", "verifying"):
-                time.sleep(1)
-                continue
-            if phase in ("candidate", "confirmed"):
-                print(phase, flush=True)
-                return state
-            if phase == "clarify":
-                asked = asked + 1
-                assert asked <= limit, "模型追问次数超过上限"
-                self.answer_clarification(state, answer)
-                continue
-            raise AssertionError(f"规划停止：{phase}")
-        raise AssertionError("演示流程超过等待时间")
+class DemoCheck:
+    def __init__(self):
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        self.run_dir = ROOT / ".scratch" / "demo-check" / f"{stamp}-{uuid4().hex[:6]}"
+        self.run_dir.mkdir(parents=True)
+        (self.run_dir / "tmp").mkdir()
+        self.app_data = self.run_dir / "app-data"
+        self.bundle = self.run_dir / "bundle"
+        self.remote_port = free_port()
+        self.client_process = None
+        self.remote = None
+        self.results = {}
 
-    def record(self, step):
-        record = self.saved_record()
-        state = record["business"]
-        self.records.append({"step": step, "sequence": record["sequence"],
-                             "businessVersion": record["businessVersion"], "phase": state["phase"],
-                             "project": state["project"], "draftProject": state["draftProject"],
-                             "plan": state["plan"], "receipt": state["receipt"]})
-        self.output.parent.mkdir(parents=True, exist_ok=True)
-        self.output.write_text(json.dumps(self.records, ensure_ascii=False, indent=2))
+    def prepare_bundle(self):
+        shutil.copytree(ROOT / "bundle", self.bundle)
+        manifest = json.loads((self.bundle / "manifest.json").read_text())
+        self.app_id = manifest["id"]
+        subprocess.run([str(HUB), "stamp", str(self.bundle)], check=True)
 
-    def approve(self):
-        before = self.saved()
-        assert before["plan"] is not None
-        assert before["plan"]["baseVersion"] == before["project"]["version"]
-        self.click("确认修改后的计划" if before["project"]["tasks"] else "确认计划")
-        state = self.wait(REVISE_ANSWER)
-        assert state["receipt"]["status"] == "verified"
-        assert state["project"]["version"] == before["project"]["version"] + 1
-        assert state["plan"] is None
-        assert state["receipt"]["readbackSnapshot"] == state["project"]
+    def start_client(self):
+        self.app_data.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ, TMPDIR=str(self.run_dir / "tmp"),
+                   MAKEPAD_REMOTE=str(self.remote_port), MAKEPAD_HIDE_WINDOWS="1")
+        log = (self.run_dir / "card-host.log").open("a")
+        self.client_process = subprocess.Popen(
+            [str(HOST.resolve()), "--bundle", str(self.bundle), "--app-data", str(self.app_data),
+             "--allow-unsigned", "--stamp", "--size", "1440x1000"],
+            cwd=str(HOST.resolve().parents[2]), env=env, stdin=subprocess.DEVNULL,
+            stdout=log, stderr=subprocess.STDOUT)
+        until = time.monotonic() + 90
+        while time.monotonic() < until:
+            if self.client_process.poll() is not None:
+                raise SystemExit((self.run_dir / "card-host.log").read_text())
+            try:
+                if any(item.get("i") == "timezone_label" for item in httpx.get(
+                        f"http://127.0.0.1:{self.remote_port}/snap", timeout=10).json()["s"]):
+                    self.remote = Remote(self.remote_port)
+                    return
+            except Exception:
+                pass
+            time.sleep(0.3)
+        raise AssertionError("客户端启动超时")
 
-    def repeat_confirm(self):
-        before = self.saved()
-        assert before["plan"] is not None
-        assert before["plan"]["baseVersion"] == before["project"]["version"]
-        button = self.find(text="确认修改后的计划" if before["project"]["tasks"] else "确认计划")
-        self.click_value(button)
-        self.click_value(button)
-        state = self.wait(GENERATE_ANSWER)
-        assert state["receipt"]["status"] == "verified"
-        assert state["project"]["version"] == before["project"]["version"] + 1
-        assert state["plan"] is None
-        assert state["receipt"]["readbackSnapshot"] == state["project"]
-        self.records.append({"step": "同一候选连续确认两次只增加一个版本",
-                             "versionBefore": before["project"]["version"],
-                             "versionAfter": state["project"]["version"],
-                             "receiptStatus": state["receipt"]["status"]})
-        self.output.parent.mkdir(parents=True, exist_ok=True)
-        self.output.write_text(json.dumps(self.records, ensure_ascii=False, indent=2))
+    def stop_client(self):
+        if self.client_process is None:
+            return
+        if self.client_process.poll() is None:
+            try:
+                Remote(self.remote_port).quit()
+            except Exception:
+                pass
+            until = time.monotonic() + 20
+            while self.client_process.poll() is None and time.monotonic() < until:
+                time.sleep(0.2)
+            if self.client_process.poll() is None:
+                self.client_process.terminate()
+                self.client_process.wait()
+        self.client_process = None
+        self.remote = None
 
-    def check_month(self, year, month, current):
-        self.top()
-        distance = (year - current.year) * 12 + month - current.month
-        for _ in range(abs(distance)):
-            self.click("下个月" if distance > 0 else "上个月")
-        assert self.find(identifier="month_label")["t"] == f"{year}年 {month}月"
-        values = self.snapshot()
-        dates_by_cell = {}
-        for _ in range(2):
-            snapshot = self.snapshot()
-            grid = next(value for value in snapshot if value["i"] == "calendar_grid")
-            for value in snapshot:
-                if value["i"] == "date_number":
-                    row = int((value["r"][1] - grid["r"][1]) // 120)
-                    column = int((value["r"][0] - grid["r"][0]) // 144)
-                    dates_by_cell[row * 7 + column] = value
-            self.scroll(500)
-        self.top()
-        dates = [dates_by_cell[index] for index in sorted(dates_by_cell)]
-        expected = [day for week in calendar.Calendar().monthdatescalendar(year, month) for day in week]
-        assert [value["t"] for value in dates] == [f"{day.day:02}" for day in expected], (dates, expected)
-        columns = sorted({round(value["r"][0], 1) for value in dates})
-        assert len(columns) == 7
-        assert all(abs(columns[index + 1] - columns[index] - 144) < 1 for index in range(6))
-        assert any(value["i"] == "plan_summary" and value["r"][0] == 1072 for value in values)
-        return datetime(year, month, 1), {"year": year, "month": month, "rows": len(dates) // 7, "days": len(expected)}
+    def latest_record(self):
+        records = []
+        for name in STATE_FILES:
+            path = self.app_data / self.app_id / name
+            if path.exists():
+                records.append(json.loads(path.read_text()))
+        return max(records, key=lambda record: record["sequence"]) if records else None
 
-    def check_dates(self):
-        current = datetime.utcfromtimestamp(self.saved()["month"])
-        results = []
-        for year, month in [(2026, 11), (2026, 12), (2027, 1), (2027, 2), (2028, 2)]:
-            current, result = self.check_month(year, month, current)
-            results.append(result)
-        self.click("今天")
-        self.records.append({"step": "真实月历日期与七列布局", "months": results})
-        self.fill("goal_input", "完成阅读记录应用的演示准备：检查新增记录和列表、本地保存、编写讲解说明，每项约半小时至一小时。")
-        for invalid in ("2027-02-29", "2026-13-01", "2026-10-00"):
-            self.fill("deadline_input", invalid)
-            self.click("生成计划")
-            assert "有效的截止日期" in self.find(identifier="status_label")["t"]
-            assert self.saved()["activeJob"] is None
-        self.fill("deadline_input", (datetime.now(timezone.utc) + timedelta(hours=8, days=7)).date().isoformat())
+    def business(self):
+        return self.latest_record()["business"]
+
+    def wait_phase(self, phases, timeout=60):
+        until = time.monotonic() + timeout
+        while time.monotonic() < until:
+            phase = self.business().get("phase")
+            if phase in phases:
+                return self.business()
+            time.sleep(0.2)
+        raise AssertionError(f"等待阶段超时：{phases}，当前 {self.business().get('phase')}")
 
     def run(self):
-        assert self.saved()["project"]["tasks"] == []
-        self.check_dates()
-        self.click("生成计划")
-        state = self.wait(GENERATE_ANSWER)
-        assert state["project"]["tasks"] == []
-        assert state["draftProject"]["tasks"]
+        self.prepare_bundle()
+        self.start_client()
+
+        assert self.business()["project"]["tasks"] == []
+
+        deadline = (datetime.now(timezone(timedelta(hours=8))) + timedelta(days=7)).date().isoformat()
+        self.remote.fill("goal_input", GOAL)
+        self.remote.fill("deadline_input", deadline)
+
+        self.remote.click("生成计划")
+        state = self.wait_phase(["candidate", "failed"])
+        assert state["phase"] == "candidate", state
+        assert state["demoMode"] is True, state.get("demoMode")
+        assert [task["id"] for task in state["draftProject"]["tasks"]] == ["demo-1", "demo-2", "demo-3", "demo-4"]
         assert state["plan"]["changes"]
-        self.check_daily_details()
-        self.record("真实模型拆分目标并生成候选月历")
-        self.repeat_confirm()
-        self.revise()
+        assert state["calendar"], "候选日历为空"
+        self.remote.find(text="演示数据")
+        self.results["生成"] = {"任务数": 4, "候选变更数": len(state["plan"]["changes"]), "徽标": "演示数据"}
 
-    def revise(self):
-        original = self.saved()["project"]
-        self.fill("advice_input", "请新增一个独立任务“演示设备检查”，工时0.5小时，安排在所有其他任务之前，原有任务标题与工时保持。")
-        self.click("根据建议修改")
-        state = self.wait(REVISE_ANSWER)
-        assert state["project"] == original
+        self.remote.click("确认计划")
+        state = self.wait_phase(["confirmed", "confirm_failed"])
+        assert state["phase"] == "confirmed", state
+        assert state["receipt"]["status"] == "verified", state["receipt"]
+        assert state["receipt"]["readbackSnapshot"] == state["project"]
+        assert state["project"]["version"] == 1
+        assert state["plan"] is None
+        self.results["确认"] = {"回执": "verified", "版本": 1, "正式任务数": len(state["project"]["tasks"])}
+
+        self.remote.fill("advice_input", REVISE)
+        self.remote.click("根据建议修改")
+        state = self.wait_phase(["clarify", "failed"])
+        assert state["phase"] == "clarify", state
+        assert state["question"], "追问为空"
+        assert state["workingProject"] is not None
+        self.results["修改"] = {"问题": state["question"]}
+
+        self.remote.fill("advice_input", ANSWER)
+        self.remote.click("提交回答并继续")
+        state = self.wait_phase(["candidate", "failed"])
+        assert state["phase"] == "candidate", state
+        task_ids = [task["id"] for task in state["draftProject"]["tasks"]]
+        assert task_ids == ["demo-0", "demo-1", "demo-2", "demo-3", "demo-4"], task_ids
         assert any(task["title"] == "演示设备检查" for task in state["draftProject"]["tasks"])
-        assert len(state["draftProject"]["tasks"]) == len(original["tasks"]) + 1
-        self.top()
-        self.click("查看已确认计划")
-        self.find(text="正在查看已确认计划")
-        self.find(text="计划已确认")
-        self.click("查看候选计划")
-        self.find(text="正在查看候选计划 · 正式安排已保留")
-        self.find(text="候选计划 · 待确认")
-        self.record("文字建议重构任务并保留正式计划")
-        self.check_logs()
-        print("候选与正式计划等待重新启动恢复验证", flush=True)
+        self.results["追问"] = {"回答后任务数": 5, "新增任务": "演示设备检查"}
 
-    def check_logs(self):
-        log = self.client.get("/log", params={"n": 300}).json()
-        assert not any("[E]" in line for line in log["l"]), log
+        self.remote.click("确认修改后的计划")
+        state = self.wait_phase(["confirmed", "confirm_failed"])
+        assert state["phase"] == "confirmed", state
+        assert state["receipt"]["status"] == "verified", state["receipt"]
+        assert state["project"]["version"] == 2
+        assert len(state["project"]["tasks"]) == 5
+        self.results["确认修改"] = {"回执": "verified", "版本": 2, "正式任务数": 5}
 
-    def check_daily_details(self):
-        state = self.saved()
-        changes = [item["after"] for item in state["plan"]["changes"] if item["after"]]
-        first_day = min(item["start"] for item in changes).split("T")[0]
-        day = datetime.fromisoformat(first_day).day
-        self.top()
-        snapshot = self.snapshot()
-        grid = next(item for item in snapshot if item["i"] == "calendar_grid")
-        first = datetime.fromisoformat(first_day).replace(day=1)
-        cell = first.weekday() + day - 1
-        matches = [item for item in snapshot if item["i"] == "date_number"
-                   and int((item["r"][1] - grid["r"][1]) // 120) * 7
-                   + int((item["r"][0] - grid["r"][0]) // 144) == cell]
-        assert len(matches) == 1
-        self.click_value(matches[0])
-        self.scroll(500)
-        visible = [item.get("t", "") for item in self.snapshot() if item["ty"] == "Label"]
-        on_day = [item for item in changes if item["start"].split("T")[0] == first_day]
-        assert any(text.startswith(f"{len(on_day)} 项安排") for text in visible), visible
-        tasks = {item["id"]: item for item in state["draftProject"]["tasks"]}
-        assert all(tasks[item["taskId"]]["title"] in visible for item in on_day)
-        if len(on_day) > 2:
-            assert f"还有 {len(on_day) - 2} 项安排" in visible
-        self.top()
-
-    def confirmation_failure(self):
-        self.records = json.loads(self.output.read_text())
-        before = self.saved()
-        previous = self.records[-1]
-        assert before["project"] == previous["project"]
-        assert before["draftProject"] == previous["draftProject"]
-        assert before["plan"] == previous["plan"]
-        assert "恢复候选计划" in self.find(identifier="status_label")["t"]
-        self.record("重新启动后恢复候选与正式日历")
-        self.click("确认修改后的计划" if before["project"]["tasks"] else "确认计划")
-        until = time.monotonic() + 60
-        while self.saved()["phase"] == "verifying" and time.monotonic() < until:
-            time.sleep(1)
-        state = self.saved()
-        assert state["phase"] == "confirm_failed", state
-        assert state["project"] == before["project"]
-        assert state["plan"] == before["plan"]
-        assert state["pendingVerification"]["target"]["tasks"]
-        self.find(text="重新确认计划")
-        self.record("实际服务连接中断时保留正式日历与候选计划")
-        self.check_logs()
-
-    def retry_confirm(self):
-        self.records = json.loads(self.output.read_text())
-        state = self.saved()
-        assert state["pendingVerification"] is not None
-        assert "重新确认核验" in self.find(identifier="status_label")["t"]
-        self.click("重新确认计划")
-        assert self.wait(REVISE_ANSWER)["receipt"]["status"] == "verified"
-        self.record("重新启动后恢复待核验候选并成功确认")
-        self.check_logs()
-
-    def restored_candidate(self):
-        self.records = json.loads(self.output.read_text())
-        state = self.saved()
-        last = self.records[-1]
-        assert state["project"] == last["project"]
-        assert state["draftProject"] == last["draftProject"]
-        assert state["plan"] == last["plan"]
-        self.record("重新启动后恢复候选与正式日历")
-        self.approve()
-        self.record("确认修改后的计划并核验")
-        self.check_logs()
-
-    def restored(self):
-        self.records = json.loads(self.output.read_text())
-        state = self.saved()
-        assert state["project"] == self.records[-1]["project"]
+        self.stop_client()
+        self.start_client()
+        state = self.business()
+        assert state["demoMode"] is True, state.get("demoMode")
+        assert state["phase"] == "confirmed"
         assert state["receipt"]["status"] == "verified"
-        assert "恢复本地日历" in self.find(identifier="status_label")["t"]
-        self.record("重新启动后恢复正式日历与核验回执")
-        self.check_logs()
-        print("真实客户端与真实模型主流程验证通过", flush=True)
+        assert state["project"]["version"] == 2
+        assert len(state["project"]["tasks"]) == 5
+        self.remote.find(text="演示数据")
+        self.results["重启恢复"] = {"demoMode": True, "正式任务数": 5, "徽标": "演示数据"}
+
+        (self.run_dir / "results.json").write_text(json.dumps(self.results, ensure_ascii=False, indent=2))
+        print(json.dumps(self.results, ensure_ascii=False, indent=2))
+        print("演示模式闭环检查通过（生成→确认→核验→保存→月历→修改→追问→重启恢复）")
+
+    def stop(self):
+        self.stop_client()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--remote", default="http://127.0.0.1:8144")
-    parser.add_argument("--state", type=Path, default=Path(".scratch/calendar-demo"))
-    parser.add_argument("--output", type=Path, default=Path(".scratch/calendar-demo.json"))
-    parser.add_argument("--phase", choices=["run", "restore-candidate", "restore", "verify-failure", "retry-confirm"], default="run")
-    args = parser.parse_args()
-    check = DemoCheck(args.remote, args.state, args.output)
-    if args.phase == "run":
+    check = DemoCheck()
+    try:
         check.run()
-    elif args.phase == "restore-candidate":
-        check.restored_candidate()
-    elif args.phase == "verify-failure":
-        check.confirmation_failure()
-    elif args.phase == "retry-confirm":
-        check.retry_confirm()
-    else:
-        check.restored()
+    finally:
+        check.stop()

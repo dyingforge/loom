@@ -2,18 +2,13 @@
   "agent": null,
   "capabilities": [
     "storage",
-    "net"
+    "model"
   ],
   "id": "loom.pm-calendar",
   "integrity": {
-    "bundle_blake3": "ccd190ad47a2a0a0d86a6c2fdc466c367dddb835f7d209699f2d7fab3e314ecb"
+    "bundle_blake3": "615c8ffe24b27d311391e59087b2bc2c755a2174f9bb2000edafa64f9bc884de"
   },
   "name": "Loom 目标日历",
-  "network": {
-    "hosts": [
-      "tariff-boards-bradley-theory.trycloudflare.com"
-    ]
-  },
   "schema": 1,
   "storage": {
     "max_bytes": 4194304

@@ -15,8 +15,8 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 STATE_FILES = ("state-a.json", "state-b.json")
 BUSINESS_FIELDS = ("schema", "project", "draftProject", "plan", "receipt", "pendingVerification",
-                   "calendar", "capacity", "formalCapacity", "activeJob", "lastRequest", "phase", "error",
-                   "savedAt", "confirmedRationale", "confirmedRisks", "questionId", "question", "resumeToken",
+                   "calendar", "capacity", "formalCapacity", "lastRequest", "phase", "error",
+                   "savedAt", "confirmedRationale", "confirmedRisks", "questionId", "question",
                    "workingProject", "utcOffset", "timezone", "month", "selectedDay", "showingFormal")
 DRAFT_FIELDS = ("projectId", "questionId", "revision", "goal", "deadline", "answer")
 

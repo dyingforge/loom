@@ -1,49 +1,123 @@
-# Loom 日历协议
+# Loom 客户端协议
+
+Loom 是零服务化的自包含客户端：规划由宿主提供的 `model.complete` 完成，宿主没有模型服务时自动使用内置演示数据。本文件描述客户端内部的持久化格式、与宿主的交互契约、约束核验语义与演示模式。
 
 ## 时间与项目
 
-项目使用东八区（UTC+8）的无偏移 ISO 日历时间，例如 `2026-10-01T09:00:00`。客户端固定该时区，不读取设备时区文件。请求中的 `now` 必填，时间包含偏移时拒绝处理。休息日编号为 `0=周一` 至 `6=周日`。
+项目使用东八区（UTC+8）的无偏移 ISO 日历时间，例如 `2026-10-01T09:00:00`。客户端固定该时区，不读取设备时区文件。休息日编号为 `0=周一` 至 `6=周日`。
 
-项目包含 `id`、非负 `version`、`goal`、`deadline`、`milestones`、`tasks`、`fixedEvents`、`workHours`、`restDays`、`preferences`、`autoAdjust`。任务包含 `id`、`title`、`priority`、`remainingHours`、`done`、`dependsOn`、`adjustable`、`blocks`。完整类型定义位于 `server/domain/models.py`。
+项目包含 `id`、非负 `version`、`goal`、`deadline`、`milestones`、`tasks`、`fixedEvents`、`workHours`、`restDays`、`preferences`、`autoAdjust`。任务包含 `id`、`title`、`priority`、`remainingHours`、`done`、`dependsOn`、`adjustable`、`blocks`。时间块包含 `id`、`taskId`、`start`、`end`、`done`。完整类型定义位于 `server/domain/models.py`（参考资产，客户端在 OctoScript 中重新实现同名语义）。
 
-## 生成与修改
+## 状态文件
 
-客户端发送 `POST /v1/agent/jobs`，包含 `snapshot`、`now`、`trigger`、`instruction`。生成目标使用 `trigger=compose`；根据建议修改使用 `trigger=revise` 和非空 `instruction`。目标与有效的未来截止时间必须存在。
+客户端在应用目录交替写入 `state-a.json` 与 `state-b.json` 两份完整 JSON 快照。每份对象顶层 `schema` 为 1，包含：
 
-服务立即返回 `202` 和 `jobId`。客户端使用 `GET /v1/agent/jobs/{jobId}` 查询，每次最多等待十五秒。执行中返回 `status=running` 和实际工具执行阶段 `stage`；结束时返回 `status=complete` 和 `result`。服务重启或过程过期返回 `410`。服务最多同时执行四项规划。
+- `sequence`：严格递增的保存序号。
+- `businessVersion`：每次业务提交增加一次的版本号。
+- `business`：完整业务对象，含正式项目 `project`、候选任务 `draftProject`、计划 `plan`、核验回执 `receipt`、待核验目标 `pendingVerification`、日历 `calendar`、容量 `capacity`/`formalCapacity`、阶段 `phase`、追问 `question`/`questionId`/`workingProject`、演示标记 `demoMode`、显示月份与选中日期。
+- `draft`：输入草稿，含 `projectId`、`questionId`、`revision`、`goal`、`deadline`、`answer`。
 
-| 结果字段 | 含义 |
-| --- | --- |
-| `type` | `plan`、`tasks`、`clarify` 或 `failed` |
-| `draftProject` | 生成或修改后的完整候选任务清单 |
-| `payload` | 计划、问题、候选任务或停止原因 |
-| `proposed_tasks` | 任务建议操作提出的候选任务 |
-| `resumeToken` | 暂停时签发的恢复凭据，仅 `clarify` 返回 |
-| `capacity` | 剩余工时、期限内可用工时与缺口 |
-| `calendar` | ISO 时间与日历秒数的对应数据 |
+每次保存写入另一份文件，立即回读文本比较并检查必要字段，成功后才更新已保存序号与业务版本；失败就停止当前操作。启动时读取两份文件，选择序号最大的完整记录；一份不完整时恢复另一份并提示中断保存；两份都不存在时初始化；存在但没有有效记录时停止初始化并保留文件。业务提交与草稿保存复用同一入口，草稿保存只增加 `revision`，不增加 `businessVersion`。
 
-服务独占完整模型会话、对话、工具调用结果与调用计数，只向客户端返回上表中的展示字段。
+## model.complete 交互契约
 
-`compose` 必须调用 `rebuild_tasks` 完成目标拆分。`revise` 根据建议调整任务内容、工时、依赖或时间。重构保留已经开始或完成的工作记录。模型查询真实空闲时段，提交完整排程，并接受工时、依赖、工作时间、固定日程和冲突核验。
+客户端通过 `host.request("model.complete", {task, input, schema, class: "strong"}, callback)` 请求宿主模型。`task` 是当次指令，`input` 是只含当次所需字段的数据，`schema` 是必填 JSON Schema。回调返回 `r.is_ok`、`r.data.output` 或 `r.error`。
 
-计划包含 `planId`、`baseVersion`、`changes`、`rationale`、`risks`、`exceptions`。每项变更包含 `blockId`、`before`、`after`。候选清单与候选日历分别通过 `draftProject` 和计划变更表示，正式项目在确认前保持保存状态。
+规划分阶段进行，模型只写理解和方案，执行与核验不经过模型：
 
-## 确认与核验
+1. 拆分任务：`task` 为「把目标拆分为任务列表」，`input` 含目标、截止日期、当前时间、工作时间、休息日、固定日程、已有任务、修改建议与追问回答，`schema` 为 `schema_tasks`。输出 `{tasks: [...]}`。
+2. 排程：`task` 为「为任务安排时间块，保留已完成与已开始块的编号和时间不变」，`input` 含拆分结果，`schema` 为 `schema_blocks`。输出 `{blocks: [...]}`。
+3. 核验修正：排程结果未通过约束时，把违规码 `violations` 连同原块送回模型修正一次；仍不通过则停止，进入可重试的失败态。
+4. 提交：通过增量核验后，候选计划写入 `draftProject`/`plan`/`calendar`/`capacity`，阶段为 `candidate`。
 
-客户端检查计划版本和原始时间块，根据 `draftProject` 应用变更，产生版本增加一次的完整目标日历。候选目标先写入 `pendingVerification`，同时保留正式项目。
+### 各阶段 Schema
 
-客户端实际回读保存文件，将 `beforeSnapshot`、`draftProject`、`plan`、`readbackSnapshot` 和当前 `now` 发送至 `POST /v1/calendar/verify`。服务比较完整预期数据与回读数据，复核日历约束以及已经开始或完成的记录。
+`schema_tasks`（拆分任务输出，小于 8 KiB）：
 
-服务返回 `verified` 或 `not_verified` 回执。核验通过后，客户端将目标日历保存为正式项目并再次回读比较；候选与待核验记录清空。失败时保留正式项目、候选与待核验目标，显示具体原因并提供重新确认入口。
+```json
+{"type":"object","required":["tasks"],"additionalProperties":false,
+ "properties":{"tasks":{"type":"array","maxItems":64,"items":{
+   "type":"object","required":["id","title","priority","remainingHours","dependsOn","adjustable"],
+   "additionalProperties":false,"properties":{
+     "id":{"type":"string","minLength":1,"maxLength":80},
+     "title":{"type":"string","minLength":1,"maxLength":200},
+     "priority":{"type":"integer","minimum":1,"maximum":5},
+     "remainingHours":{"type":"number","minimum":0,"maximum":720},
+     "dependsOn":{"type":"array","maxItems":32,"items":{"type":"string"}},
+     "adjustable":{"type":"boolean"}}}}}}
+```
 
-## 保存与恢复
+`schema_blocks`（排程输出，小于 8 KiB）：
 
-客户端在应用目录交替写入 `state-a.json` 和 `state-b.json`，每份是一个完整 JSON 对象，顶层 `schema` 为 1。对象包含严格递增的 `sequence`、每次业务提交增加一次的 `businessVersion`、完整的 `business` 业务对象，以及带 `projectId`、`questionId`、`revision`、`goal`、`deadline`、`answer` 的 `draft`。业务提交与草稿保存复用同一个同步入口，写入后立即回读文本比较并检查必要字段，成功后才更新已保存序号和业务版本；失败时停止当前操作。启动时读取两份文件，选择序号最大的完整记录；一份不完整时恢复另一份并提示中断保存；两份都不存在时初始化；存在但没有有效记录时停止初始化并保留文件。
+```json
+{"type":"object","required":["blocks"],"additionalProperties":false,
+ "properties":{"blocks":{"type":"array","maxItems":512,"items":{
+   "type":"object","required":["taskId","start","end"],
+   "additionalProperties":false,"properties":{
+     "taskId":{"type":"string","minLength":1,"maxLength":80},
+     "start":{"type":"string","minLength":16,"maxLength":19},
+     "end":{"type":"string","minLength":16,"maxLength":19},
+     "done":{"type":"boolean"}}}}}}
+```
 
-记录中的业务对象包含正式项目、候选任务、计划、时间资料、输入建议、核验回执、待核验目标、显示月份和选中日期。候选与正式计划支持分别查看和重新启动恢复。执行中的 `jobId` 可以继续查询；服务连接失效后显示停止原因。
+### 追问
 
-## 补充回答
+演示模式中，`revise` 触发一次追问（`demo_clarify`），把问题写入 `question`、候选项目写入 `workingProject`，阶段为 `clarify`。用户回答后以 `trigger=resume` 把回答拼进 `input.clarificationAnswer` 继续规划。真实模式下追问回答同样走无状态调用，把问答历史拼进 `input`，不保存任何服务端会话。
 
-`type=clarify` 时，客户端显示问题并保存服务端返回的 `resumeToken` 与展示字段。恢复请求包含 `trigger=resume`、当前项目、当前时间、`clarificationAnswer` 和独立的 `resumeToken`，不再携带任何模型会话数据。
+## 约束核验语义（工具语义）
 
-服务使用 SQLite 中的暂停状态继续规划。恢复凭据有效期二十四小时，凭据自身携带可解析的过期时间，服务签发新凭据时清理过期会话；过期凭据无论记录是否已清理都返回 `410` 与 `resume_expired`。恢复时先校验凭据所属项目，校验通过才标记消费，项目不符返回 `409` 与 `resume_project_mismatch` 且不消费凭据。未知有效期内凭据返回 `404` 与 `resume_unknown`，已消费凭据返回 `409` 与 `resume_consumed`。每轮最多调用模型十次，同一候选最多提交核验四次，计数由服务保存。
+`apply_plan_result` 是模型输出的唯一入口：为候选块生成 `id`，把候选任务写入 draft（保留同 id 任务的已有块、`adjustable` 与 `done`），再做 `validate_codes` 增量核验。核验按 C1–C7 就地检查候选块：
+
+- C0：任务编号与时间块编号不重复，块归属任务存在。
+- C1：已经开始或完成的时间块必须完整保留；新增块必须属于未完成任务且从当前时间以后开始。
+- C2：不与固定日程冲突。
+- C3：时间块完整位于工作日的工作时段。
+- C4：任务依赖无环，未完成任务排在依赖任务之后。
+- C5：未来未完成块总工时与剩余工时一致。
+- C6：时间块互不重叠。
+- C7：变更不涉及未授权自动调整的任务。
+
+通过后 `diff_blocks` 生成 `changes`，`plan_project` 按变更应用到 draft 得到候选日历。确认时 `verify_calendar_reasons` 复核版本一致、工作时间与固定日程不变、已完成记录不变、应用方案与回读一致，并再次跑 C1–C7；通过则写核验回执 `{planId, versionBefore, versionAfter, readbackSnapshot, status: "verified", reason}`，正式项目版本增加一次，候选与待核验记录清空。
+
+## 演示模式
+
+宿主对 `model.complete` 返回 `no service answers "model" on this device` 时，客户端进入演示模式（`demo_mode`），徽标从「由你的模型生成」切换为「演示数据」。演示数据是固化的完整数据：四项任务、四个计划块、一次修改（新增「演示设备检查」）、一次追问，覆盖 生成→计划卡→确认→核验→保存→月历→修改→追问 全链路。演示数据走与真实模式完全相同的 `apply_plan_result`/`commit_candidate`/`verify_calendar_reasons` 路径，时间块按「下一个工作日 09:00 起」排布以保证约束始终成立。演示数据出处与验证证据见 `review/ANSWERS.md`。
+
+## 宿主环境要求
+
+- 客户端在 OctoSense 宿主（`card-host`）中运行，清单能力为 `["storage", "model"]`，不声明网络。
+- `storage`：应用目录读写 `state-a.json`/`state-b.json`，额度 4 MiB。
+- `model`：调用 `host.request("model.complete", …)`。宿主没有注册模型服务时进入演示模式，客户端不崩溃。
+- 宿主由 `native/LOCK.json` 固定的官方提交构建，`run_client.py` 核对构建标记。
+
+## 拒绝码与预算
+
+模型调用失败全部显示为可重试的失败态，不崩溃：
+
+- 无 provider 或无模型服务：宿主返回 `no service answers "model" on this device`，进入演示模式。
+- 预算超限、频率限制、provider 失败：宿主的错误消息原样显示在失败态，提供「重新生成计划」重试入口。
+- 输出非法：缺少 `tasks`/`blocks` 字段时显示「模型未返回任务列表」/「模型未返回时间块」，可重试。
+- 约束核验失败：先送回模型修正一次，仍失败显示违规码，可重试。
+
+宿主对单次 `model.complete` 的指令预算、频率与输出体积由宿主强制执行；客户端只对 `task`/`input`/`schema` 做字段裁剪，`task` 不超过 4 KiB，`input` 不超过 32 KiB，Schema 不超过 8 KiB。
+
+## 自建复现步骤
+
+```sh
+# 1. 按锁定来源构建原生宿主（hub 与 card-host）
+python3 scripts/build_native.py
+
+# 2. 核对 bundle
+.scratch/native/OctoSense-App-Hub/target/release/hub check bundle --allow-unsigned
+
+# 3. 打开客户端
+python3 scripts/run_client.py
+
+# 4. 演示闭环自测（card-host 无模型服务时自动走演示模式）
+python3 scripts/check_demo.py
+
+# 5. 客户端状态自测（草稿保存与重启恢复）
+python3 scripts/check_client_state.py
+```
+
+`server/` 目录是旧版服务端实现的参考资产，客户端不再使用；`vectors/` 是约束核验的共用测试数据，客户端用 `run_vector_check` 在 card-host 内复算并逐条对齐 Python 输出。

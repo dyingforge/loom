@@ -9,7 +9,8 @@
   "category": "productivity",
   "platforms": ["macos"],
   "age_rating": "all",
-  "description": "填写目标与截止日期，Loom 自动拆分任务并安排到月历。查看每天的完整安排，通过文字建议调整任务与时间，确认并核验后保存正式计划。客户端使用 OctoScript 原生控件，规划由 Python 服务与 MiniMax 完成。",
+  "description": "填写目标与截止日期，Loom 自动拆分任务并安排到月历。查看每天的完整安排，通过文字建议调整任务与时间，确认并核验后保存正式计划。规划由宿主模型完成，无模型服务时自动使用内置演示数据。",
+  "license": "Apache-2.0",
   "icon": "assets/icon.svg",
   "screenshots": ["screenshots/01-main.png"],
   "keywords": ["project", "calendar", "scheduling", "agent"]
