@@ -4,7 +4,7 @@
   "publisher": {
     "name": "dyingforge",
     "support": "https://github.com/dyingforge/loom/issues",
-    "privacy_policy_url": "https://github.com/dyingforge/loom/blob/v0.1.0/docs/PRIVACY.md"
+    "privacy_policy_url": "https://github.com/dyingforge/loom/blob/v0.1.1/docs/PRIVACY.md"
   },
   "category": "productivity",
   "platforms": ["macos"],

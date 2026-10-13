@@ -223,12 +223,17 @@ def build(lock, hub_only):
     binary = repo / "target" / "release" / binary_name
     if not binary.is_file():
         raise SystemExit("构建后没有找到 {}".format(binary))
-    stamp = {
-        "lock_sha256": sha256_file(LOCK_PATH),
-        binary_name.replace("-", "_") + "_sha256": sha256_file(binary),
-        "repositories": {item["name"]: item["fix"] for item in lock["repositories"]},
-    }
-    (binary.parent / STAMP_NAME).write_text(json.dumps(stamp, indent=2, sort_keys=True) + "\n")
+    stamp_path = binary.parent / STAMP_NAME
+    stamp = {}
+    if stamp_path.is_file():
+        try:
+            stamp = json.loads(stamp_path.read_text())
+        except ValueError:
+            stamp = {}
+    stamp["lock_sha256"] = sha256_file(LOCK_PATH)
+    stamp[binary_name.replace("-", "_") + "_sha256"] = sha256_file(binary)
+    stamp["repositories"] = {item["name"]: item["fix"] for item in lock["repositories"]}
+    stamp_path.write_text(json.dumps(stamp, indent=2, sort_keys=True) + "\n")
     print("原生宿主已按锁定来源构建：{}".format(binary.parent))
 
 

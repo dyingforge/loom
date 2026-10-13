@@ -6,12 +6,12 @@
   ],
   "id": "loom.pm-calendar",
   "integrity": {
-    "bundle_blake3": "615c8ffe24b27d311391e59087b2bc2c755a2174f9bb2000edafa64f9bc884de"
+    "bundle_blake3": "8422b62f12064daa06d8777cb3fe14dec4f020273f399c2ae9e1902f480db035"
   },
   "name": "Loom 目标日历",
   "schema": 1,
   "storage": {
     "max_bytes": 4194304
   },
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

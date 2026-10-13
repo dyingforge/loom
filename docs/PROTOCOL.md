@@ -6,7 +6,7 @@ Loom 是零服务化的自包含客户端：规划由宿主提供的 `model.comp
 
 项目使用东八区（UTC+8）的无偏移 ISO 日历时间，例如 `2026-10-01T09:00:00`。客户端固定该时区，不读取设备时区文件。休息日编号为 `0=周一` 至 `6=周日`。
 
-项目包含 `id`、非负 `version`、`goal`、`deadline`、`milestones`、`tasks`、`fixedEvents`、`workHours`、`restDays`、`preferences`、`autoAdjust`。任务包含 `id`、`title`、`priority`、`remainingHours`、`done`、`dependsOn`、`adjustable`、`blocks`。时间块包含 `id`、`taskId`、`start`、`end`、`done`。完整类型定义位于 `server/domain/models.py`（参考资产，客户端在 OctoScript 中重新实现同名语义）。
+项目包含 `id`、非负 `version`、`goal`、`deadline`、`milestones`、`tasks`、`fixedEvents`、`workHours`、`restDays`、`preferences`、`autoAdjust`。任务包含 `id`、`title`、`priority`、`remainingHours`、`done`、`dependsOn`、`adjustable`、`blocks`。时间块包含 `id`、`taskId`、`start`、`end`、`done`。里程碑为 `{title, date}`，`date` 是 `YYYY-MM-DD` 日历日；拆分阶段可由模型产出，月历以「◆ 里程碑」标记并在容量区做期限风险提示。`autoAdjust` 表示项目是否允许自动调整，为 true 时候选与确认核验额外执行 C7。完整类型定义位于 `server/domain/models.py`（参考资产，客户端在 OctoScript 中重新实现同名语义）。
 
 ## 状态文件
 
@@ -25,10 +25,11 @@ Loom 是零服务化的自包含客户端：规划由宿主提供的 `model.comp
 
 规划分阶段进行，模型只写理解和方案，执行与核验不经过模型：
 
-1. 拆分任务：`task` 为「把目标拆分为任务列表」，`input` 含目标、截止日期、当前时间、工作时间、休息日、固定日程、已有任务、修改建议与追问回答，`schema` 为 `schema_tasks`。输出 `{tasks: [...]}`。
-2. 排程：`task` 为「为任务安排时间块，保留已完成与已开始块的编号和时间不变」，`input` 含拆分结果，`schema` 为 `schema_blocks`。输出 `{blocks: [...]}`。
+1. 拆分任务：`task` 为「把目标拆分为任务列表」，`input` 含目标、截止日期、当前时间、工作时间、休息日、固定日程、已有任务、修改建议与追问回答，`schema` 为 `schema_tasks`。输出 `{tasks: [...]}`，可附 `milestones`（里程碑）与 `question`（追问，见下文）。
+2. 排程：`task` 为「为任务安排时间块，保留已完成与已开始块的编号和时间不变」，`input` 含拆分结果与 `slots`（客户端预计算的未来 14 天空闲时段列表，供模型参考），`schema` 为 `schema_blocks`。输出 `{blocks: [...]}`，可附 `rationale`（安排理由）与 `risks`（风险），展示在计划说明与容量区。
 3. 核验修正：排程结果未通过约束时，把违规码 `violations` 连同原块送回模型修正一次；仍不通过则停止，进入可重试的失败态。
 4. 提交：通过增量核验后，候选计划写入 `draftProject`/`plan`/`calendar`/`capacity`，阶段为 `candidate`。
+5. 执行闭环：用户在当天安排中把时间块标记为完成，这是本地业务提交：`block.done=true`，任务 `remainingHours` 扣减块时长，无未完成块且工时归零时任务完成，`project.version` 增加，容量重算后经双快照保存，不经过模型。随后可发起 `trigger=progress` 的重排：跳过任务拆分，直接用现有任务排程；已完成与已开始块由 C1 锁定，其余走与修改建议完全相同的候选→确认→核验→保存链路。
 
 ### 各阶段 Schema
 
@@ -44,7 +45,12 @@ Loom 是零服务化的自包含客户端：规划由宿主提供的 `model.comp
      "priority":{"type":"integer","minimum":1,"maximum":5},
      "remainingHours":{"type":"number","minimum":0,"maximum":720},
      "dependsOn":{"type":"array","maxItems":32,"items":{"type":"string"}},
-     "adjustable":{"type":"boolean"}}}}}}
+     "adjustable":{"type":"boolean"}}}},
+ "question":{"type":"string","minLength":1,"maxLength":300},
+ "milestones":{"type":"array","maxItems":8,"items":{
+   "type":"object","required":["title","date"],"additionalProperties":false,"properties":{
+     "title":{"type":"string","minLength":1,"maxLength":80},
+     "date":{"type":"string","minLength":10,"maxLength":10}}}}}}
 ```
 
 `schema_blocks`（排程输出，小于 8 KiB）：
@@ -57,12 +63,15 @@ Loom 是零服务化的自包含客户端：规划由宿主提供的 `model.comp
      "taskId":{"type":"string","minLength":1,"maxLength":80},
      "start":{"type":"string","minLength":16,"maxLength":19},
      "end":{"type":"string","minLength":16,"maxLength":19},
-     "done":{"type":"boolean"}}}}}}
+     "done":{"type":"boolean"}}}},
+ "rationale":{"type":"string","minLength":1,"maxLength":800},
+ "risks":{"type":"array","maxItems":8,"items":{"type":"string","maxLength":200}}
+}
 ```
 
 ### 追问
 
-演示模式中，`revise` 触发一次追问（`demo_clarify`），把问题写入 `question`、候选项目写入 `workingProject`，阶段为 `clarify`。用户回答后以 `trigger=resume` 把回答拼进 `input.clarificationAnswer` 继续规划。真实模式下追问回答同样走无状态调用，把问答历史拼进 `input`，不保存任何服务端会话。
+真实与演示模式都支持追问。真实模式下阶段一输出非空 `question` 即进入追问（`enter_clarify`）：问题写入 `question`、候选项目写入 `workingProject`、阶段为 `clarify`。演示模式中 `revise` 触发一次固化追问（`demo_clarify`）。用户回答后以 `trigger=resume` 把回答拼进 `input.clarificationAnswer` 继续规划；追问回答走无状态调用，不保存任何服务端会话。
 
 ## 约束核验语义（工具语义）
 
@@ -75,13 +84,13 @@ Loom 是零服务化的自包含客户端：规划由宿主提供的 `model.comp
 - C4：任务依赖无环，未完成任务排在依赖任务之后。
 - C5：未来未完成块总工时与剩余工时一致。
 - C6：时间块互不重叠。
-- C7：变更不涉及未授权自动调整的任务。
+- C7：变更不涉及未授权自动调整的任务；仅在项目允许自动调整（`autoAdjust=true`）时判定，手动确认的候选不受 C7 限制。
 
 通过后 `diff_blocks` 生成 `changes`，`plan_project` 按变更应用到 draft 得到候选日历。确认时 `verify_calendar_reasons` 复核版本一致、工作时间与固定日程不变、已完成记录不变、应用方案与回读一致，并再次跑 C1–C7；通过则写核验回执 `{planId, versionBefore, versionAfter, readbackSnapshot, status: "verified", reason}`，正式项目版本增加一次，候选与待核验记录清空。
 
 ## 演示模式
 
-宿主对 `model.complete` 返回 `no service answers "model" on this device` 时，客户端进入演示模式（`demo_mode`），徽标从「由你的模型生成」切换为「演示数据」。演示数据是固化的完整数据：四项任务、四个计划块、一次修改（新增「演示设备检查」）、一次追问，覆盖 生成→计划卡→确认→核验→保存→月历→修改→追问 全链路。演示数据走与真实模式完全相同的 `apply_plan_result`/`commit_candidate`/`verify_calendar_reasons` 路径，时间块按「下一个工作日 09:00 起」排布以保证约束始终成立。演示数据出处与验证证据见 `review/ANSWERS.md`。
+宿主对 `model.complete` 返回 `no service answers "model" on this device` 时，客户端进入演示模式（`demo_mode`），徽标从「由你的模型生成」切换为「演示数据」。演示数据是固化的完整数据：四项任务、四个计划块、一次修改（新增「演示设备检查」）、一次追问，覆盖 生成→计划卡→确认→核验→保存→月历→修改→追问 全链路；progress 重排的数据由当前正式快照派生（任务与时间块原样保留，含用户标记的完成状态），覆盖 标记完成→重排→确认 链路。演示数据走与真实模式完全相同的 `apply_plan_result`/`commit_candidate`/`verify_calendar_reasons` 路径，时间块按「下一个工作日 09:00 起」排布以保证约束始终成立。演示数据出处与验证证据见 `review/ANSWERS.md`。
 
 ## 宿主环境要求
 

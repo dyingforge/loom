@@ -1,11 +1,12 @@
-# Submit loom.pm-calendar 0.1.0
+# Submit loom.pm-calendar 0.1.1
 
 ## 提交信息
 
 - 应用：`loom.pm-calendar`
-- 版本：`0.1.0`
+- 版本：`0.1.1`
 - 仓库：`https://github.com/dyingforge/loom`
-- 标签：`v0.1.0`
+- 标签：`v0.1.1`
+- 应用包摘要（bundle_blake3）：`8422b62f12064daa06d8777cb3fe14dec4f020273f399c2ae9e1902f480db035`
 - 应用包路径：`bundle/`
 - 发布者：`dyingforge`
 - 签名：`unsigned`（首次提交使用未签名应用包）
@@ -17,10 +18,12 @@
 ## 官方检查输出
 
 ```text
-loom.pm-calendar 0.1.0 — PASSED
+loom.pm-calendar 0.1.1 — PASSED
   [warning] publisher-signature: unsigned: accountability rests on the hub alone
   grants: capabilities {"model", "storage"}, hosts {}, storage 4194304 bytes, agent none
 ```
+
+应用包摘要 `bundle_blake3` 为 `8422b62f12064daa06d8777cb3fe14dec4f020273f399c2ae9e1902f480db035`，与上方提交信息一致。
 
 带官方目录的 `hub check --allow-unsigned` 退出状态为 0，只有未签名提示。
 
@@ -32,6 +35,10 @@ loom.pm-calendar 0.1.0 — PASSED
 - 自动拆分并安排到月历：`start_model_planning()` 调用宿主 `host.request("model.complete", …)`，结果经 `apply_plan_result()` 写入 `app_state.draftProject`、`app_state.plan` 与 `app_state.calendar`，由 `calendar_grid` 绘制。
 - 查看完整安排：`day_detail` 显示所选日期的全部时间块与依赖。
 - 文字建议修改：`advice_input` 与 `revise_plan()` 触发 `revise`。
+- 追问澄清：模型对修改建议返回 `question` 字段时进入追问界面，回答后完成候选。
+- 计划理由与风险提示：候选计划的 `rationale` 与 `risks` 展示在计划说明与容量区。
+- 里程碑展示：拆分结果的 `milestones` 以「◆ 里程碑」标注在月历与当天安排中。
+- 执行闭环：当天安排中可将时间块标记完成，剩余工作一键重新排程并确认。
 - 确认并核验后保存：`confirm_plan()`、`verify_pending()` 调用本地 `verify_calendar_reasons()`，通过后写入正式项目与核验回执。
 - 保存到本地：客户端在应用目录交替写入 `state-a.json` 与 `state-b.json` 完整快照，写入后回读比较。
 - 无模型服务时：`on_model_error()` 识别 `no service answers "model" on this device`，进入演示模式，用固化数据走同一链路。
@@ -80,7 +87,8 @@ loom.pm-calendar 0.1.0 — PASSED
 
 - 宿主：`native/LOCK.json` 固定官方 OctoSense-App-Hub 提交及其 `Cargo.toml` 引用的 Makepad、octoscript-makepad、octoscript 提交。
 - 真实文件存储、东八区日期与初始截止日期、无设备时间文件、中文连续输入、重启恢复、部分写入恢复、全部记录无效停止：通过。
-- 演示闭环（生成→计划卡→确认→核验→保存→月历→修改→追问→重启恢复）：`python3 scripts/check_demo.py` 通过。
+- 演示闭环（生成→计划卡→确认→核验→保存→月历→修改→追问→标记完成→重排→重启恢复）：`python3 scripts/check_demo.py` 通过。
 - 约束核验 C1–C7 与 Python 参考逐条一致：`python3 scripts/check_vectors_client.py` 通过。
 - 官方宿主正常流程下隔离预算为 4194304 字节存储、67108864 字节堆与 20000000 条指令，连续操作未触发任何上限错误。
-- `hub check`：通过。截图：`bundle/screenshots/01-main.png` 来自真实客户端。
+- `hub check`：通过（上方输出）。截图：`bundle/screenshots/01-main.png` 来自官方 `card-host` 真实运行窗口抓取（2026-10-12，1440×1000 布局点，含新按钮与图例的当前界面）。
+- 真实模式真机验证：2026-10-12 在 OctoSense 桌面 RC4 与用户自配模型提供方下完成（0.1.0 构建），证据与 0.1.1 新增项的验证记录见 `review/ANSWERS.md`。

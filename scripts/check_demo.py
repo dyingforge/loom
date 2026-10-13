@@ -27,6 +27,15 @@ def free_port():
         return probe.getsockname()[1]
 
 
+def next_workday_epoch():
+    """与客户端 next_workday 一致：明天起第一个非周末日的东八区当地午夜 epoch。"""
+    day = (datetime.now(timezone(timedelta(hours=8))) + timedelta(days=1)).date()
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    epoch_day = datetime(1970, 1, 1, tzinfo=timezone(timedelta(hours=8))).date()
+    return (day.toordinal() - epoch_day.toordinal()) * 86400 - 8 * 3600
+
+
 class Remote:
     def __init__(self, port):
         self.client = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=30)
@@ -36,6 +45,22 @@ class Remote:
 
     def scroll(self, amount):
         self.client.get("/m", params={"k": "scroll", "x": 1000, "y": 700, "dy": amount, "wait": 1}).raise_for_status()
+
+    def scroll_to_top(self):
+        for _ in range(10):
+            self.scroll(-800)
+
+    def click_day(self, epoch):
+        """按 calendar_grid 几何位置点击东八区日期对应的日历格。"""
+        from datetime import datetime as dt
+        day = dt.fromtimestamp(epoch + 8 * 3600, tz=timezone(timedelta(hours=8)))
+        month_start = dt(day.year, day.month, 1, tzinfo=timezone(timedelta(hours=8)))
+        lead = month_start.weekday()
+        index = (day.toordinal() - month_start.toordinal()) + lead
+        row, column = divmod(index, 7)
+        grid = self.find(identifier="calendar_grid")
+        gx, gy, _, _ = grid["r"]
+        self.client.get("/click", params={"x": gx + column * 144 + 72, "y": gy + row * 120 + 60, "wait": 1}).raise_for_status()
 
     def find(self, identifier=None, text=None):
         for attempt in range(20):
@@ -59,6 +84,20 @@ class Remote:
 
     def click(self, text):
         self.click_value(self.find(text=text))
+
+    def click_first(self, text):
+        """点击同文本控件中最靠上的一个（用于当天安排的逐块操作）。"""
+        values = []
+        for attempt in range(20):
+            values = [value for value in self.snapshot()
+                      if value["ty"] != "Splash" and value.get("t") == text
+                      and 0 <= value["r"][1] < 970]
+            if values:
+                break
+            self.scroll(220 if attempt < 10 else -220)
+        assert values, text
+        top = min(values, key=lambda value: value["r"][1])
+        self.click_value(top)
 
     def focus(self, identifier):
         self.click_value(self.find(identifier=identifier))
@@ -85,6 +124,7 @@ class DemoCheck:
         self.app_data = self.run_dir / "app-data"
         self.bundle = self.run_dir / "bundle"
         self.remote_port = free_port()
+        self.window_size = "1440x1000"
         self.client_process = None
         self.remote = None
         self.results = {}
@@ -102,7 +142,7 @@ class DemoCheck:
         log = (self.run_dir / "card-host.log").open("a")
         self.client_process = subprocess.Popen(
             [str(HOST.resolve()), "--bundle", str(self.bundle), "--app-data", str(self.app_data),
-             "--allow-unsigned", "--stamp", "--size", "1440x1000"],
+             "--allow-unsigned", "--stamp", "--size", self.window_size],
             cwd=str(HOST.resolve().parents[2]), env=env, stdin=subprocess.DEVNULL,
             stdout=log, stderr=subprocess.STDOUT)
         until = time.monotonic() + 90
@@ -172,6 +212,7 @@ class DemoCheck:
         assert state["demoMode"] is True, state.get("demoMode")
         assert [task["id"] for task in state["draftProject"]["tasks"]] == ["demo-1", "demo-2", "demo-3", "demo-4"]
         assert state["plan"]["changes"]
+        assert state["plan"]["rationale"], "候选计划缺少安排理由"
         assert state["calendar"], "候选日历为空"
         self.remote.find(text="演示数据")
         self.results["生成"] = {"任务数": 4, "候选变更数": len(state["plan"]["changes"]), "徽标": "演示数据"}
@@ -210,20 +251,50 @@ class DemoCheck:
         assert len(state["project"]["tasks"]) == 5
         self.results["确认修改"] = {"回执": "verified", "版本": 2, "正式任务数": 5}
 
+        # 执行闭环：标记完成 → 重新安排剩余工作 → 确认重排
+        self.remote.scroll_to_top()
+        self.remote.click_day(next_workday_epoch())
+        self.remote.click_first("标记完成")
+        state = self.wait_phase(["confirmed"])
+        assert state["project"]["version"] == 3, state["project"]["version"]
+        demo_zero = [task for task in state["project"]["tasks"] if task["id"] == "demo-0"][0]
+        assert demo_zero["done"] is True, demo_zero
+        assert demo_zero["remainingHours"] == 0, demo_zero
+        self.results["完成标记"] = {"版本": 3, "已完成任务": "demo-0"}
+
+        self.remote.click("重新安排剩余工作")
+        state = self.wait_phase(["candidate", "failed"])
+        assert state["phase"] == "candidate", state
+        assert len(state["draftProject"]["tasks"]) == 5
+        demo_zero = [task for task in state["draftProject"]["tasks"] if task["id"] == "demo-0"][0]
+        assert demo_zero["done"] is True, demo_zero
+        self.results["重排"] = {"任务数": 5, "已完成任务": "demo-0"}
+
+        self.remote.click("确认修改后的计划")
+        state = self.wait_phase(["confirmed", "confirm_failed"])
+        assert state["phase"] == "confirmed", state
+        assert state["receipt"]["status"] == "verified", state["receipt"]
+        assert state["project"]["version"] == 4, state["project"]["version"]
+        demo_zero = [task for task in state["project"]["tasks"] if task["id"] == "demo-0"][0]
+        assert demo_zero["done"] is True, demo_zero
+        self.results["确认重排"] = {"回执": "verified", "版本": 4}
+
         self.stop_client()
         self.start_client()
         state = self.business()
         assert state["demoMode"] is True, state.get("demoMode")
         assert state["phase"] == "confirmed"
         assert state["receipt"]["status"] == "verified"
-        assert state["project"]["version"] == 2
+        assert state["project"]["version"] == 4
         assert len(state["project"]["tasks"]) == 5
+        demo_zero = [task for task in state["project"]["tasks"] if task["id"] == "demo-0"][0]
+        assert demo_zero["done"] is True, demo_zero
         self.remote.find(text="演示数据")
-        self.results["重启恢复"] = {"demoMode": True, "正式任务数": 5, "徽标": "演示数据"}
+        self.results["重启恢复"] = {"demoMode": True, "正式任务数": 5, "已完成任务": "demo-0", "徽标": "演示数据"}
 
         (self.run_dir / "results.json").write_text(json.dumps(self.results, ensure_ascii=False, indent=2))
         print(json.dumps(self.results, ensure_ascii=False, indent=2))
-        print("演示模式闭环检查通过（生成→确认→核验→保存→月历→修改→追问→重启恢复）")
+        print("演示模式闭环检查通过（生成→确认→核验→保存→月历→修改→追问→标记完成→重排→重启恢复）")
 
     def stop(self):
         self.stop_client()
