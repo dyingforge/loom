@@ -84,6 +84,6 @@ loom.pm-calendar 0.1.1 — PASSED
   grants: capabilities {"model", "storage"}, hosts {}, storage 4194304 bytes, agent none
 ```
 
-带目录的检查退出状态为 0。七项审核问题的回答保存在[审核回答](APPHUB_SUBMISSION.md)，最终提交前用当前官方工具重新运行 `hub scan` 和 `hub check`。尚未创建发布者密钥、版本标签或提交 Issue。
+带目录的检查退出状态为 0。七项审核问题的回答保存在[审核回答](APPHUB_SUBMISSION.md)，最终提交前用当前官方工具重新运行 `hub scan` 和 `hub check`。首次提交未签名：`v0.1.1` 标签已创建并推送（commit `9522189afc1b63cb488b075adb96eca1d242346f`），发布 workflow 运行成功，发布包经本地 `publisher-unpack`/`publisher-verify` 验证通过，提交 Issue 为 [OctoSense-App-Hub #220](https://github.com/OctoSense-org/OctoSense-App-Hub/issues/220)。
 
 中间资料保存在 Git 忽略的 `.scratch/`，包括官方文档、目录、检查输出、审核回答与真实客户端证据。

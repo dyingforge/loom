@@ -30,3 +30,7 @@
 布局修复：窗口宽度约 1000 布局点以下的目标输入行挤压已修复（目标输入列固定 560 宽，两种窗口尺寸验证通过），记录见 `review/ANSWERS.md`。
 
 交付使用按官方 `native/LOCK.json` 提交构建的本地 card-host。提交资料包括真实截图与应用包检查；首次提交允许未签名，已有签名发布记录的后续提交需要使用登记密钥。具体资料见 [正式提交所需资料](OPEN_QUESTIONS.md) 和 [AppHub 发布准备](APPHUB_PUBLISHING.md)。
+
+## 发布记录
+
+- 2026-10-12：`v0.1.1`（commit `9522189afc1b63cb488b075adb96eca1d242346f`）发布 workflow 成功（run `38332828050`），Release `app.bundle.pack.json` 的 SHA256 为 `9008301c449636b0690d7fbc1a8cd40b025ea012b8acb71e36a87b3e17f9ecec`，本地 `publisher-unpack`/`publisher-verify` 通过且摘要 `8422b62f12064daa06d8777cb3fe14dec4f020273f399c2ae9e1902f480db035` 与开发副本一致，提交 Issue 为 [OctoSense-App-Hub #220](https://github.com/OctoSense-org/OctoSense-App-Hub/issues/220)。

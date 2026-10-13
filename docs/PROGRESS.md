@@ -17,5 +17,6 @@
 | 真机真实模式验证 | 已实现 | OctoSense 桌面 RC4 与用户自配模型提供方，证据见 `review/ANSWERS.md` |
 | 执行闭环：完成标记与剩余重排 | 已实现 | `check_demo.py` 执行闭环段（标记完成→重排→确认→重启恢复） |
 | 真实模式理由与追问、里程碑、空闲时段、窄窗口布局 | 已实现 | `check_demo.py` 理由断言与发布验收全链路 |
+| AppHub 提交 0.1.1 | 已提交 | 发布 workflow 成功、`publisher-unpack`/`publisher-verify` 通过、提交 Issue OctoSense-App-Hub #220 |
 
 自动测试覆盖日历约束、保存核验、任务重构、容量、权限、使用记录与架构，共六十四项，位于 `server/tests/` 作为参考资产保留并通过。发布验收以 `scripts/check_release.py` 为准，覆盖存储、演示闭环、客户端状态、向量核验与 `hub check`，真实客户端验收证据写入 `.scratch/release-check/`。客户端零服务化，没有需要保持运行的服务或隧道。
