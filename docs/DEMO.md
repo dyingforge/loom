@@ -55,6 +55,10 @@ python3 scripts/check_demo.py
 
 覆盖：生成→计划卡→确认→核验→保存→月历→修改→追问→标记完成→重排→重启恢复，并核对「演示数据」徽标。
 
+## 演示视频
+
+`docs/evidence/demo-full-loop.mp4` 是完整链路演示（约 61 秒）：`scripts/record_demo.py` 驱动官方 card-host 走完生成→确认→修改→追问→标记完成→重排→重启恢复，逐阶段抓取真实窗口帧，`scripts/build_demo_video.py` 渲染阶段字幕并合成视频。画面为应用内置演示数据。
+
 `scripts/check_client_state.py` 检查草稿保存与重启恢复；`scripts/check_vectors_client.py` 驱动 card-host 复算 C1–C7 并逐条对齐 Python 参考输出。发布门禁：
 
 ```sh
